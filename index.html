@@ -331,4 +331,833 @@
           <p class="text-xs text-slate-500">Specify when teachers are busy giving normal classes (e.g., Grade 8-10 classes during Grade 12 prelims).</p>
         </div>
         <div class="flex items-center space-x-2">
-          <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer 
+          <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5">
+            <i data-lucide="file-up" class="w-4 h-4"></i> Upload CSV
+            <input type="file" accept=".csv" onchange="uploadSchedulesCSV(event)" class="hidden">
+          </label>
+          <button onclick="exportSchedulesCSV()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Add Schedule Form -->
+      <form onsubmit="addSchedule(event)" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-800">Register Busy Teaching Slot</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Teacher</label>
+            <select id="scheduleTeacher" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Day of Week</label>
+            <select id="scheduleDay" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Period (e.g., P1)</label>
+            <input type="text" id="schedulePeriod" required placeholder="e.g., P3" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Class & Subject</label>
+            <input type="text" id="scheduleClass" required placeholder="e.g., Gr9B Life Sciences" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+        </div>
+        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow transition flex items-center gap-1">
+          <i data-lucide="plus" class="w-4 h-4"></i> Add Busy Slot
+        </button>
+      </form>
+
+      <!-- Schedule Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 text-slate-600 text-xs font-bold border-b border-slate-200">
+              <th class="py-3 px-4">Teacher</th>
+              <th class="py-3 px-4">Day</th>
+              <th class="py-3 px-4">Period</th>
+              <th class="py-3 px-4">Class & Subject</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="schedulesTableBody" class="divide-y divide-slate-100 text-xs text-slate-700"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4. EXAM TIMETABLE TAB -->
+    <div id="content-exams" class="tab-content hidden space-y-6">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Exam Timetable</h2>
+          <p class="text-xs text-slate-500">Register exam sessions with date, period, subject and student count to drive the 1:30 invigilator ratio.</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5">
+            <i data-lucide="file-up" class="w-4 h-4"></i> Upload CSV
+            <input type="file" accept=".csv" onchange="uploadExamsCSV(event)" class="hidden">
+          </label>
+          <button onclick="exportExamsCSV()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Add Exam Form -->
+      <form onsubmit="addExam(event)" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-800">Add Exam Session</h3>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Date</label>
+            <input type="date" id="examDate" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Day of Week</label>
+            <select id="examDay" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Period (e.g., P1)</label>
+            <input type="text" id="examPeriod" required placeholder="e.g., P2" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Subject (with grade)</label>
+            <input type="text" id="examSubject" required placeholder="e.g., Mathematics Gr12" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Number of Students</label>
+            <input type="number" id="examStudents" min="1" required placeholder="e.g., 75" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+        </div>
+        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow transition flex items-center gap-1">
+          <i data-lucide="plus" class="w-4 h-4"></i> Add Exam Session
+        </button>
+      </form>
+
+      <!-- Exams Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 text-slate-600 text-xs font-bold border-b border-slate-200">
+              <th class="py-3 px-4">Date</th>
+              <th class="py-3 px-4">Day</th>
+              <th class="py-3 px-4">Period</th>
+              <th class="py-3 px-4">Subject</th>
+              <th class="py-3 px-4">Students</th>
+              <th class="py-3 px-4">Invigilators Needed (1:30)</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="examsTableBody" class="divide-y divide-slate-100 text-xs text-slate-700"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5. ROSTER GENERATOR TAB -->
+    <div id="content-generator" class="tab-content hidden space-y-6">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <h2 class="text-lg font-bold text-slate-900">Automatic Roster Generator</h2>
+        <p class="text-xs text-slate-500 mt-1">Runs the constraint solver: enforces the 1:30 ratio, excludes teachers from their own subjects, skips busy teaching slots, and balances total invigilation load fairly.</p>
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <button onclick="generateRoster()" id="btnGenerate" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition flex items-center gap-2">
+            <i data-lucide="zap" class="w-4 h-4"></i> Generate Balanced Roster
+          </button>
+          <button onclick="clearRoster()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i data-lucide="eraser" class="w-4 h-4"></i> Clear Assignments
+          </button>
+          <button onclick="exportRosterCSV()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i data-lucide="file-down" class="w-4 h-4"></i> Export Roster CSV
+          </button>
+          <span id="generatorMsg" class="text-xs font-medium"></span>
+        </div>
+      </div>
+
+      <div id="rosterOutput" class="space-y-4">
+        <div class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-400 text-sm">
+          <i data-lucide="clipboard-list" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>
+          No roster generated yet. Register teachers, schedules and exams — then click "Generate Balanced Roster".
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. TEACHER VIEW TAB -->
+    <div id="content-teacher-view" class="tab-content hidden space-y-6">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-end gap-4">
+        <div class="w-full sm:w-72">
+          <label class="block text-xs font-medium text-slate-600 mb-1">Select Teacher</label>
+          <select id="tvTeacherSelect" onchange="renderTeacherView()" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+        </div>
+        <button onclick="printTeacherDuty()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+          <i data-lucide="printer" class="w-4 h-4"></i> Print Duty Sheet
+        </button>
+      </div>
+      <div id="teacherViewOutput" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-sm text-slate-600">
+        Select a teacher to view their personal invigilation duty schedule.
+      </div>
+    </div>
+
+    <!-- 7. SUBSCRIPTION & BILLING TAB -->
+    <div id="content-billing" class="tab-content hidden space-y-6">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <h2 class="text-lg font-bold text-slate-900">Subscription & Billing</h2>
+        <p class="text-xs text-slate-500 mt-1">Your school account runs on an annual SaaS license. All stored data remains safe if the subscription lapses.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Account</div>
+          <div class="mt-2 text-base font-bold text-slate-900" id="billingSchoolName">Westridge High School</div>
+          <div class="text-xs text-slate-500" id="billingEmail">admin@westridge.edu</div>
+          <div class="mt-3 inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">Annual School Unlimited</div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">License Status</div>
+          <div class="mt-2 text-2xl font-bold text-slate-900" id="billingDaysLeft">365 days left</div>
+          <div class="text-xs text-slate-500" id="billingExpiresOn">Expires on —</div>
+          <div class="mt-3"><span id="billingStatusPill" class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">ACTIVE</span></div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan Price</div>
+          <div class="mt-2 text-2xl font-bold text-slate-900">$499 <span class="text-xs font-medium text-slate-500">/ year</span></div>
+          <p class="text-xs text-slate-500 mt-2">Unlimited teachers, exams and rosters. Automatic 1:30 ratio enforcement included.</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4 text-indigo-600"></i> Renew or Extend License</h3>
+        <div class="flex flex-wrap gap-3">
+          <button onclick="renewSubscription(365)" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow transition">Renew 12 Months</button>
+          <button onclick="renewSubscription(180)" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition">Extend 6 Months</button>
+          <button onclick="expireSubscriptionDemo()" class="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-xl border border-red-100 transition">Simulate Expiry (Demo)</button>
+        </div>
+        <p class="text-[10px] text-slate-400">Demo note: payments are simulated locally; no real charges occur in this prototype.</p>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i data-lucide="database" class="w-4 h-4 text-indigo-600"></i> Full Account Data Backup</h3>
+        <div class="flex flex-wrap gap-3">
+          <button onclick="exportJSONBackup()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"><i data-lucide="download" class="w-4 h-4"></i> Download JSON Backup</button>
+          <label class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer">
+            <i data-lucide="upload" class="w-4 h-4"></i> Restore from JSON
+            <input type="file" accept=".json" onchange="importJSONBackup(event)" class="hidden">
+          </label>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-slate-900 text-slate-400 border-t border-slate-800 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
+      <div>© 2026 Invigismart Pro — Exam Invigilation Roster SaaS</div>
+      <div class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> Annual License • Data stored locally in your browser</div>
+    </div>
+  </footer>
+  <script>
+  /* =========================================================
+     STATE & PERSISTENCE
+     ========================================================= */
+  const STORAGE_KEY = 'invigismart_state_v1';
+
+  let state = {
+    auth: null,                 // { school, email }
+    licenseExpiry: null,        // ISO string
+    teachers: [],               // { id, name, subjects: [..] }
+    schedules: [],              // { id, teacherId, day, period, klass }
+    exams: [],                  // { id, date, day, period, subject, students }
+    roster: null                // { assignments: [{examId, teacherIds}], generatedAt }
+  };
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) state = Object.assign(state, JSON.parse(raw));
+    } catch (e) {}
+  }
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function daysLeft() {
+    if (!state.licenseExpiry) return 0;
+    return Math.max(0, Math.ceil((new Date(state.licenseExpiry) - Date.now()) / 86400000));
+  }
+  function isLicensed() { return daysLeft() > 0; }
+
+  /* =========================================================
+     AUTH & LICENSE
+     ========================================================= */
+  function handleAuthLogin(e) {
+    e.preventDefault();
+    state.auth = {
+      school: document.getElementById('authSchoolName').value.trim(),
+      email: document.getElementById('authEmail').value.trim()
+    };
+    if (!state.licenseExpiry) renewLicenseSilently(365);
+    saveState();
+    refreshAll();
+  }
+
+  function handleLogout() {
+    state.auth = null;
+    saveState();
+    refreshAll();
+  }
+
+  function renewLicenseSilently(days) {
+    const base = isLicensed() ? new Date(state.licenseExpiry) : new Date();
+    base.setDate(base.getDate() + days);
+    state.licenseExpiry = base.toISOString();
+  }
+
+  function renewSubscription(days) {
+    renewLicenseSilently(days);
+    saveState();
+    refreshAll();
+    alert('Subscription renewed for ' + days + ' days. Thank you! (Demo — no payment processed.)');
+  }
+
+  function expireSubscriptionDemo() {
+    state.licenseExpiry = new Date(Date.now() - 86400000).toISOString();
+    saveState();
+    refreshAll();
+  }
+
+  function checkPaywall() {
+    const expired = state.auth && !isLicensed();
+    document.getElementById('paywallModal').classList.toggle('hidden', !expired);
+    if (expired) document.getElementById('paywallSchoolName').textContent = state.auth.school;
+    return !expired;
+  }
+
+  /* =========================================================
+     TABS
+     ========================================================= */
+  function switchTab(name) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    const target = document.getElementById('content-' + name);
+    if (target) target.classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const active = btn.id === 'tab-' + name;
+      btn.classList.toggle('border-indigo-600', active);
+      btn.classList.toggle('text-indigo-600', active);
+      btn.classList.toggle('border-transparent', !active);
+      btn.classList.toggle('text-slate-500', !active);
+    });
+    if (name === 'generator') renderRosterOutput();
+    if (name === 'teacher-view') populateTeacherViewSelect();
+    if (window.lucide) lucide.createIcons();
+  }
+
+  /* =========================================================
+     TEACHERS
+     ========================================================= */
+  function addTeacher(e) {
+    e.preventDefault();
+    if (!checkPaywall()) return;
+    const name = document.getElementById('teacherName').value.trim();
+    const subjects = document.getElementById('teacherSubjects').value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!name || !subjects.length) return;
+    state.teachers.push({ id: uid(), name, subjects });
+    document.getElementById('teacherName').value = '';
+    document.getElementById('teacherSubjects').value = '';
+    saveState(); refreshAll();
+  }
+
+  function deleteTeacher(id) {
+    if (!checkPaywall()) return;
+    state.teachers = state.teachers.filter(t => t.id !== id);
+    state.schedules = state.schedules.filter(s => s.teacherId !== id);
+    saveState(); refreshAll();
+  }
+
+  function renderTeachers() {
+    const tbody = document.getElementById('teachersTableBody');
+    if (!state.teachers.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="py-6 px-4 text-center text-slate-400">No teachers registered. Add one above or upload a CSV.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.teachers.map(t => `
+      <tr>
+        <td class="py-3 px-4 font-semibold text-slate-800">${esc(t.name)}</td>
+        <td class="py-3 px-4">
+          ${t.subjects.map(s => `<span class="inline-block px-2 py-0.5 mr-1 mb-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-medium border border-indigo-100">${esc(s)}</span>`).join('')}
+        </td>
+        <td class="py-3 px-4 text-right">
+          <button onclick="deleteTeacher('${t.id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function csvToRows(text) {
+    return text.trim().split(/\r?\n/).map(line => line.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+  }
+
+  function uploadTeachersCSV(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = csvToRows(reader.result);
+      rows.forEach((row, i) => {
+        if (i === 0 && /name/i.test(row[0])) return; // skip header
+        if (row.length >= 2 && row[0]) {
+          state.teachers.push({ id: uid(), name: row[0], subjects: (row[1] || '').split(';').map(s => s.trim()).filter(Boolean) });
+        }
+      });
+      saveState(); refreshAll();
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  function download(filename, content, mime) {
+    const blob = new Blob([content], { type: mime || 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportTeachersCSV() {
+    const rows = ['Teacher Name,Subjects Taught'];
+    state.teachers.forEach(t => rows.push('"' + t.name + '","' + t.subjects.join('; ') + '"'));
+    download('teachers.csv', rows.join('\n'), 'text/csv');
+  }
+
+  /* =========================================================
+     SCHEDULES
+     ========================================================= */
+  function populateScheduleTeacherSelect() {
+    const sel = document.getElementById('scheduleTeacher');
+    sel.innerHTML = state.teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('') || '<option value="">— add teachers first —</option>';
+  }
+
+  function addSchedule(e) {
+    e.preventDefault();
+    if (!checkPaywall()) return;
+    const teacherId = document.getElementById('scheduleTeacher').value;
+    if (!teacherId) { alert('Please register a teacher first.'); return; }
+    state.schedules.push({
+      id: uid(),
+      teacherId,
+      day: document.getElementById('scheduleDay').value,
+      period: document.getElementById('schedulePeriod').value.trim(),
+      klass: document.getElementById('scheduleClass').value.trim()
+    });
+    document.getElementById('schedulePeriod').value = '';
+    document.getElementById('scheduleClass').value = '';
+    saveState(); refreshAll();
+  }
+
+  function deleteSchedule(id) {
+    if (!checkPaywall()) return;
+    state.schedules = state.schedules.filter(s => s.id !== id);
+    saveState(); refreshAll();
+  }
+
+  function renderSchedules() {
+    const tbody = document.getElementById('schedulesTableBody');
+    if (!state.schedules.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="py-6 px-4 text-center text-slate-400">No busy teaching slots registered.</td></tr>';
+      return;
+    }
+    const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
+    tbody.innerHTML = state.schedules.map(s => `
+      <tr>
+        <td class="py-3 px-4 font-semibold text-slate-800">${esc(tname(s.teacherId))}</td>
+        <td class="py-3 px-4">${esc(s.day)}</td>
+        <td class="py-3 px-4">${esc(s.period)}</td>
+        <td class="py-3 px-4">${esc(s.klass)}</td>
+        <td class="py-3 px-4 text-right">
+          <button onclick="deleteSchedule('${s.id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function uploadSchedulesCSV(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = csvToRows(reader.result);
+      rows.forEach((row, i) => {
+        if (i === 0 && /teacher/i.test(row[0])) return;
+        if (row.length >= 4 && row[0]) {
+          const t = state.teachers.find(x => x.name.toLowerCase() === row[0].toLowerCase());
+          if (t) state.schedules.push({ id: uid(), teacherId: t.id, day: row[1], period: row[2], klass: row[3] });
+        }
+      });
+      saveState(); refreshAll();
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  function exportSchedulesCSV() {
+    const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
+    const rows = ['Teacher,Day,Period,Class'];
+    state.schedules.forEach(s => rows.push('"' + tname(s.teacherId) + '\",' + s.day + ',' + s.period + ',"' + s.klass + '"'));
+    download('teacher_schedules.csv', rows.join('\n'), 'text/csv');
+  }
+
+  /* =========================================================
+     EXAMS
+     ========================================================= */
+  const invigCount = students => Math.max(1, Math.ceil(students / 30));
+
+  function addExam(e) {
+    e.preventDefault();
+    if (!checkPaywall()) return;
+    state.exams.push({
+      id: uid(),
+      date: document.getElementById('examDate').value,
+      day: document.getElementById('examDay').value,
+      period: document.getElementById('examPeriod').value.trim(),
+      subject: document.getElementById('examSubject').value.trim(),
+      students: parseInt(document.getElementById('examStudents').value, 10) || 1
+    });
+    ['examPeriod', 'examSubject', 'examStudents'].forEach(id => document.getElementById(id).value = '');
+    saveState(); refreshAll();
+  }
+
+  function deleteExam(id) {
+    if (!checkPaywall()) return;
+    state.exams = state.exams.filter(x => x.id !== id);
+    if (state.roster) state.roster.assignments = state.roster.assignments.filter(a => a.examId !== id);
+    saveState(); refreshAll();
+  }
+
+  function renderExams() {
+    const tbody = document.getElementById('examsTableBody');
+    if (!state.exams.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="py-6 px-4 text-center text-slate-400">No exam sessions registered.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.exams.map(x => `
+      <tr>
+        <td class="py-3 px-4">${esc(x.date)}</td>
+        <td class="py-3 px-4">${esc(x.day)}</td>
+        <td class="py-3 px-4">${esc(x.period)}</td>
+        <td class="py-3 px-4 font-semibold text-slate-800">${esc(x.subject)}</td>
+        <td class="py-3 px-4">${x.students}</td>
+        <td class="py-3 px-4"><span class="inline-block px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold border border-purple-100">${invigCount(x.students)}</span></td>
+        <td class="py-3 px-4 text-right">
+          <button onclick="deleteExam('${x.id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function uploadExamsCSV(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = csvToRows(reader.result);
+      rows.forEach((row, i) => {
+        if (i === 0 && /date/i.test(row[0])) return;
+        if (row.length >= 5 && row[0]) {
+          state.exams.push({ id: uid(), date: row[0], day: row[1], period: row[2], subject: row[3], students: parseInt(row[4], 10) || 1 });
+        }
+      });
+      saveState(); refreshAll();
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  function exportExamsCSV() {
+    const rows = ['Date,Day,Period,Subject,Students,InvigilatorsNeeded'];
+    state.exams.forEach(x => rows.push([x.date, x.day, x.period, '"' + x.subject + '"', x.students, invigCount(x.students)].join(',')));
+    download('exam_timetable.csv', rows.join('\n'), 'text/csv');
+  }
+
+  /* =========================================================
+     ROSTER GENERATION (constraint solver)
+     Rules: 1:30 ratio | no own-subject invigilation | exclude busy
+     teaching slots | balance load | no double-booking per slot
+     ========================================================= */
+  function generateRoster() {
+    if (!checkPaywall()) return;
+    if (!state.teachers.length || !state.exams.length) {
+      document.getElementById('generatorMsg').innerHTML = '<span class="text-red-600">Need at least one teacher and one exam session.</span>';
+      return;
+    }
+    const load = {};             // teacherId -> assigned count (balance)
+    state.teachers.forEach(t => load[t.id] = 0);
+    const booked = new Set();    // "day|period|teacherId" occupancy per exam slot
+    const assignments = [];
+    const warnings = [];
+
+    const sortedExams = [...state.exams].sort((a, b) =>
+      (a.day + a.period).localeCompare(b.day + b.period) || b.students - a.students);
+
+    sortedExams.forEach(exam => {
+      const needed = invigCount(exam.students);
+      const eligible = state.teachers.filter(t => {
+        if (booked.has(exam.day + '|' + exam.period + '|' + t.id)) return false;               // already invigilating this slot
+        if (t.subjects.some(s => s.toLowerCase() === exam.subject.toLowerCase())) return false; // Rule 2: own subject
+        const busy = state.schedules.some(sc => sc.teacherId === t.id && sc.day === exam.day &&
+          sc.period.toUpperCase() === exam.period.toUpperCase());                                // Rule 3: teaching slot
+        return !busy;
+      }).sort((a, b) => load[a.id] - load[b.id] || a.name.localeCompare(b.name));
+
+      const chosen = eligible.slice(0, needed).map(t => t.id);
+      if (chosen.length < needed) {
+        warnings.push(exam.subject + ' (' + exam.day + ' ' + exam.period + '): only ' + chosen.length + '/' + needed + ' invigilators available.');
+      }
+      chosen.forEach(tid => { load[tid]++; booked.add(exam.day + '|' + exam.period + '|' + tid); });
+      assignments.push({ examId: exam.id, teacherIds: chosen });
+    });
+
+    state.roster = { assignments, generatedAt: new Date().toISOString() };
+    saveState();
+    const msgEl = document.getElementById('generatorMsg');
+    msgEl.innerHTML = warnings.length
+      ? '<span class="text-amber-600">Roster generated with ' + warnings.length + ' warning(s): ' + esc(warnings.join(' | ')) + '</span>'
+      : '<span class="text-emerald-600">Roster generated successfully — all constraints satisfied.</span>';
+    renderRosterOutput();
+    refreshStats();
+  }
+
+  function clearRoster() {
+    if (!checkPaywall()) return;
+    state.roster = null;
+    saveState();
+    renderRosterOutput();
+    refreshStats();
+    document.getElementById('generatorMsg').textContent = '';
+  }
+
+  function renderRosterOutput() {
+    const out = document.getElementById('rosterOutput');
+    if (!state.roster || !state.roster.assignments.length) {
+      out.innerHTML = '<div class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-400 text-sm"><i data-lucide="clipboard-list" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>No roster generated yet. Register teachers, schedules and exams — then click "Generate Balanced Roster".</div>';
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+    const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
+    out.innerHTML = state.roster.assignments.map(a => {
+      const exam = state.exams.find(x => x.id === a.examId);
+      if (!exam) return '';
+      const needed = invigCount(exam.students);
+      const ok = a.teacherIds.length === needed;
+      return `
+      <div class="bg-white rounded-2xl border ${ok ? 'border-slate-200' : 'border-amber-300'} shadow-sm p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="font-bold text-sm text-slate-900">${esc(exam.subject)}</div>
+            <div class="text-xs text-slate-500">${esc(exam.date)} • ${esc(exam.day)} ${esc(exam.period)} • ${exam.students} students → ${needed} invigilator(s)</div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${ok ? 'FULLY STAFFED' : 'UNDERSTAFFED'}</span>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          ${a.teacherIds.length
+            ? a.teacherIds.map((tid, i) => `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-800 rounded-lg text-xs font-semibold border border-indigo-100"><i data-lucide="user" class="w-3.5 h-3.5"></i>${i + 1}. ${esc(tname(tid))}</span>`).join('')
+            : '<span class="text-xs text-red-500 font-medium">No eligible invigilators found for this slot.</span>'}
+        </div>
+      </div>`;
+    }).join('');
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function exportRosterCSV() {
+    if (!state.roster) { alert('Generate a roster first.'); return; }
+    const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
+    const rows = ['Date,Day,Period,Subject,Students,Required,Invigilators'];
+    state.roster.assignments.forEach(a => {
+      const exam = state.exams.find(x => x.id === a.examId);
+      if (!exam) return;
+      rows.push([exam.date, exam.day, exam.period, '"' + exam.subject + '"', exam.students, invigCount(exam.students), '"' + a.teacherIds.map(tname).join('; ') + '"'].join(','));
+    });
+    download('invigilation_roster.csv', rows.join('\n'), 'text/csv');
+  }
+
+  /* =========================================================
+     TEACHER VIEW
+     ========================================================= */
+  function populateTeacherViewSelect() {
+    const sel = document.getElementById('tvTeacherSelect');
+    const prev = sel.value;
+    sel.innerHTML = state.teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('') || '<option value="">— no teachers —</option>';
+    if (prev) sel.value = prev;
+    renderTeacherView();
+  }
+
+  function renderTeacherView() {
+    const out = document.getElementById('teacherViewOutput');
+    const tid = document.getElementById('tvTeacherSelect').value;
+    const t = state.teachers.find(x => x.id === tid);
+    if (!t) { out.innerHTML = 'Select a teacher to view their personal invigilation duty schedule.'; return; }
+    const duties = (state.roster ? state.roster.assignments : [])
+      .filter(a => a.teacherIds.includes(tid))
+      .map(a => state.exams.find(x => x.id === a.examId))
+      .filter(Boolean)
+      .sort((a, b) => (a.day + a.period).localeCompare(b.day + b.period));
+    const busy = state.schedules.filter(s => s.teacherId === tid);
+    const initials = t.name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('');
+    out.innerHTML = `
+      <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
+        <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">${esc(initials)}</div>
+        <div>
+          <div class="font-bold text-slate-900">${esc(t.name)}</div>
+          <div class="text-xs text-slate-500">${esc(t.subjects.join(', '))}</div>
+        </div>
+        <span class="ml-auto px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100">${duties.length} duty assignment(s)</span>
+      </div>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead><tr class="text-slate-500 font-bold border-b border-slate-100"><th class="py-2 pr-4">Date</th><th class="py-2 pr-4">Day</th><th class="py-2 pr-4">Period</th><th class="py-2">Exam Subject</th></tr></thead>
+          <tbody>${duties.length ? duties.map(d => `<tr class="border-b border-slate-50"><td class="py-2 pr-4">${esc(d.date)}</td><td class="py-2 pr-4">${esc(d.day)}</td><td class="py-2 pr-4">${esc(d.period)}</td><td class="py-2 font-semibold text-slate-800">${esc(d.subject)}</td></tr>`).join('')
+            : '<tr><td colspan="4" class="py-4 text-center text-slate-400">No invigilation duties assigned yet. Generate a roster first.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ${busy.length ? '<div class="mt-4 text-[11px] text-slate-400">Regular teaching commitments (protected): ' + busy.map(b => esc(b.day + ' ' + b.period + ' — ' + b.klass)).join(' • ') + '</div>' : ''}`;
+  }
+
+  function printTeacherDuty() { window.print(); }
+
+  /* =========================================================
+     JSON BACKUP / RESTORE
+     ========================================================= */
+  function exportJSONBackup() {
+    download('invigismart-backup-' + new Date().toISOString().slice(0, 10) + '.json',
+      JSON.stringify(state, null, 2), 'application/json');
+  }
+
+  function importJSONBackup(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        ['teachers', 'schedules', 'exams', 'roster', 'licenseExpiry', 'auth'].forEach(k => {
+          if (k in data) state[k] = data[k];
+        });
+        saveState(); refreshAll();
+        alert('Backup restored successfully.');
+      } catch (err) {
+        alert('Invalid backup file: ' + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  /* =========================================================
+     SAMPLE DATA
+     ========================================================= */
+  function loadSampleData() {
+    if (!checkPaywall()) return;
+    const mk = (name, subs) => ({ id: uid(), name, subjects: subs });
+    const t1 = mk('Mr. David Miller', ['Mathematics Gr12']);
+    const t2 = mk('Mrs. Sarah Adams', ['Physical Science Gr11', 'Chemistry Gr12']);
+    const t3 = mk('Ms. Linda Okafor', ['English Home Language Gr10']);
+    const t4 = mk('Mr. James Botha', ['Life Sciences Gr9', 'Geography Gr11']);
+    const t5 = mk('Mrs. Priya Naidoo', ['History Gr12']);
+    const t6 = mk('Mr. Tom van der Merwe', ['Accounting Gr12', 'Economics Gr11']);
+    const t7 = mk('Ms. Fatima Ali', ['Afrikaans FAL Gr10']);
+    const t8 = mk('Mr. Robert Moyo', ['Mathematical Literacy Gr12']);
+    state.teachers = [t1, t2, t3, t4, t5, t6, t7, t8];
+    state.schedules = [
+      { id: uid(), teacherId: t1.id, day: 'Tuesday', period: 'P2', klass: 'Gr12C Mathematics' },
+      { id: uid(), teacherId: t2.id, day: 'Monday', period: 'P1', klass: 'Gr11A Physical Science' },
+      { id: uid(), teacherId: t4.id, day: 'Wednesday', period: 'P3', klass: 'Gr9B Life Sciences' },
+      { id: uid(), teacherId: t6.id, day: 'Thursday', period: 'P2', klass: 'Gr12D Accounting' }
+    ];
+    state.exams = [
+      { id: uid(), date: '2026-10-05', day: 'Monday', period: 'P1', subject: 'Mathematics Gr12', students: 84 },
+      { id: uid(), date: '2026-10-05', day: 'Monday', period: 'P2', subject: 'English Home Language Gr10', students: 55 },
+      { id: uid(), date: '2026-10-06', day: 'Tuesday', period: 'P1', subject: 'Physical Science Gr11', students: 62 },
+      { id: uid(), date: '2026-10-06', day: 'Tuesday', period: 'P3', subject: 'History Gr12', students: 40 },
+      { id: uid(), date: '2026-10-07', day: 'Wednesday', period: 'P2', subject: 'Accounting Gr12', students: 36 },
+      { id: uid(), date: '2026-10-08', day: 'Thursday', period: 'P1', subject: 'Life Sciences Gr9', students: 90 },
+      { id: uid(), date: '2026-10-09', day: 'Friday', period: 'P2', subject: 'Afrikaans FAL Gr10', students: 28 }
+    ];
+    state.roster = null;
+    saveState(); refreshAll();
+    switchTab('dashboard');
+  }
+
+  /* =========================================================
+     RENDER GLUE
+     ========================================================= */
+  function refreshStats() {
+    document.getElementById('statTeachers').textContent = state.teachers.length;
+    document.getElementById('statExams').textContent = state.exams.length;
+    let assigned = 0, required = 0;
+    if (state.roster) {
+      state.roster.assignments.forEach(a => {
+        assigned += a.teacherIds.length;
+        const exam = state.exams.find(x => x.id === a.examId);
+        if (exam) required += invigCount(exam.students);
+      });
+    } else {
+      state.exams.forEach(x => required += invigCount(x.students));
+    }
+    document.getElementById('statAssigned').textContent = assigned + ' / ' + required;
+    document.getElementById('statLicenseDays').textContent = daysLeft();
+  }
+
+  function refreshHeader() {
+    const loggedIn = !!state.auth;
+    document.getElementById('authModal').classList.toggle('hidden', loggedIn);
+    if (loggedIn) {
+      document.getElementById('userSchoolDisplay').textContent = state.auth.school;
+      document.getElementById('userEmailDisplay').textContent = state.auth.email;
+      document.getElementById('billingSchoolName').textContent = state.auth.school;
+      document.getElementById('billingEmail').textContent = state.auth.email;
+    }
+    const d = daysLeft();
+    const badge = document.getElementById('subStatusBadge');
+    const banner = document.getElementById('subExpiredBanner');
+    badge.classList.toggle('hidden', !loggedIn);
+    banner.classList.toggle('hidden', !(loggedIn && d === 0));
+    if (loggedIn) {
+      const em = d > 0;
+      badge.className = 'hidden sm:flex items-center px-3 py-1 rounded-full text-xs font-semibold border transition ' +
+        (em ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20');
+      document.getElementById('badgeSubText').textContent = em ? 'Active (' + d + ' days left)' : 'Expired';
+      document.getElementById('billingDaysLeft').textContent = d + ' days left';
+      document.getElementById('billingExpiresOn').textContent = state.licenseExpiry ? 'Expires on ' + new Date(state.licenseExpiry).toLocaleDateString() : 'Expires on —';
+      const pill = document.getElementById('billingStatusPill');
+      pill.textContent = em ? 'ACTIVE' : 'EXPIRED';
+      pill.className = 'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ' +
+        (em ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100');
+    }
+    checkPaywall();
+  }
+
+  function refreshAll() {
+    refreshHeader();
+    renderTeachers();
+    populateScheduleTeacherSelect();
+    renderSchedules();
+    renderExams();
+    renderRosterOutput();
+    populateTeacherViewSelect();
+    refreshStats();
+    if (window.lucide) lucide.createIcons();
+  }
+
+  /* =========================================================
+     INIT
+     ========================================================= */
+  window.addEventListener('DOMContentLoaded', () => {
+    loadState();
+    // Security fix: never prefill password fields with fake values.
+    document.getElementById('authPassword').value = '';
+    refreshAll();
+    if (window.lucide) lucide.createIcons();
+  });
+  </script>
+</body>
+</html>
