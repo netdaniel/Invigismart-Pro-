@@ -12,3 +12,6 @@ invigismart-backup-*.json
 .env
 .env.production
 .env.local
+# Deploy credentials (cPanel/FTPS) and IDE sync config holding the password.
+.deploy.env
+.vscode/sftp.json
