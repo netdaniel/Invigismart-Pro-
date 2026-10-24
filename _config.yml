@@ -1,0 +1,22 @@
+# GitHub Pages (legacy Jekyll build) — publish the static site only.
+#
+# The browser-facing site lives in the repository root and must be published:
+#   /                        -> index.html (the app; fully client-side)
+#   /landing.html            -> marketing / signup page
+#   /privacy.html, /terms.html
+#   /assets/*                -> logos and timetable-import.js
+#   /CNAME                   -> custom domain declaration (do not exclude)
+#
+# The Flask backend in server/ is a *separate* deployment (see DEPLOY.md).
+# GitHub Pages is static, so publishing it here would expose the backend
+# source, its test suite and the production runbook at public URLs while
+# still not running any of it.
+
+exclude:
+  - server
+  - DEPLOY.md
+  - README.md
+  - .gitignore
+  - .env.example
+  - .env.production.example
+  - _config.yml
