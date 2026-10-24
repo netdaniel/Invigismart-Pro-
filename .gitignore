@@ -1,1 +1,14 @@
 server.log
+__pycache__/
+*.pyc
+server/*.db
+server/*.db-journal
+server/*.db-wal
+server/*.db-shm
+# Uploaded school documents (pupil/teacher data) never belong in version control.
+server/uploads/
+# Generated staff-timetable backups contain personal data; keep them local.
+invigismart-backup-*.json
+.env
+.env.production
+.env.local

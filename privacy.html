@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy &mdash; Invigismart Pro</title>
+  <meta name="description" content="Privacy Policy (POPIA &amp; GDPR compliant) for Invigismart Pro, the exam invigilation rostering platform operated by Prinsloo Consulting.">
+  <!-- Same pinned libraries and palette as the landing page and dashboard,
+       so the legal pages look like part of the same product -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.min.js"
+          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"
+          crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg">
+  <script>
+    /* Invigismart Pro brand palette. Kept identical to landing.html and
+       index.html so the two products share one visual identity. */
+    (function () {
+      if (typeof tailwind === 'undefined' || !tailwind) return;
+      var blue = {
+        50: '#eef6ff', 100: '#d9ecff', 200: '#bcdcff', 300: '#8ec5ff', 400: '#59a6fb',
+        500: '#2f86ee', 600: '#1d6fd8', 700: '#1857ad', 800: '#1a4a8c', 900: '#1b3f74', 950: '#12294d'
+      };
+      var navy = {
+        50: '#f4f6fb', 100: '#e6ebf6', 200: '#c9d4ec', 300: '#9fb2da', 400: '#7189c2',
+        500: '#5068a8', 600: '#3e4f8b', 700: '#33406f', 800: '#263563', 900: '#1a2b5c', 950: '#101a36'
+      };
+      var green = {
+        50: '#e9f9f0', 100: '#cdf1dd', 200: '#9fe4bd', 300: '#66d194', 400: '#34bd6f',
+        500: '#1fae5b', 600: '#128f4a', 700: '#0f723d', 800: '#105c34', 900: '#0f4c2d', 950: '#072a19'
+      };
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: { brand: blue, navy: navy, indigo: blue, emerald: green },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+              display: ['Poppins', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
+            },
+            backgroundImage: {
+              'brand-gradient': 'linear-gradient(135deg,#2f86ee 0%,#1d6fd8 45%,#1fae5b 100%)'
+            }
+          }
+        }
+      };
+    })();
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    section[id], h2[id] { scroll-margin-top: 5.5rem; }
+  </style>
+</head>
+<body class="bg-white text-slate-800 font-sans antialiased">
+
+  <!-- ===================== NAV ===================== -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <a href="/" class="flex items-center gap-3 shrink-0" aria-label="Invigismart Pro home">
+        <img src="/assets/logo-mark.svg" alt="Invigismart Pro" width="40" height="40" class="w-10 h-10 shrink-0">
+        <span class="leading-tight">
+          <span class="block font-display font-extrabold text-navy-900 tracking-tight">Invigismart <span class="text-emerald-500">Pro</span></span>
+          <span class="hidden sm:block text-[11px] text-slate-500 font-medium">Exam invigilation rostering</span>
+        </span>
+      </a>
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <a href="/terms" class="px-3 py-2 text-sm font-semibold text-slate-600 hover:text-indigo-600 transition">Terms</a>
+        <a href="/" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md transition">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to home
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== CONTENT ===================== -->
+  <main class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
+    <p class="text-xs font-bold uppercase tracking-wider text-indigo-600">Legal &middot; POPIA &amp; GDPR Compliant</p>
+    <h1 class="mt-2 font-display text-3xl sm:text-4xl font-extrabold text-navy-900 tracking-tight">Privacy Policy</h1>
+    <p class="mt-3 text-sm text-slate-500">Last updated: October 2026</p>
+
+    <p class="mt-8 text-[15px] leading-relaxed text-slate-600">
+      Prinsloo Consulting operates <strong class="text-slate-800">Invigismart Pro&trade;</strong>
+      (<a href="https://invigismart.online" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">invigismart.online</a>).
+      We are committed to protecting the privacy and personal information of our users, schools, and teaching staff in accordance
+      with the Protection of Personal Information Act (POPIA) of South Africa and international data protection standards.
+    </p>
+
+    <section class="mt-10">
+      <h2 id="collect" class="text-xl font-bold text-navy-900">1. Information We Collect</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        We collect only the minimum necessary information required to operate the Invigismart Pro&trade; scheduling platform:
+      </p>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="user-round" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Account Information:</strong> School name, administrator contact name, email address, phone number, and account credentials.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="users" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">School Operational Data:</strong> Names of teaching staff, subjects taught, regular teaching timetables, and exam schedule details uploaded by your school administrator.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="credit-card" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Payment Information:</strong> Payment transactions are processed directly by PayFast (Pty) Ltd. Invigismart Pro&trade; does not store or process credit card numbers, banking details, or CVVs on our servers.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="purpose" class="text-xl font-bold text-navy-900">2. Purpose of Data Processing</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        We collect and process personal and operational data strictly for the following purposes:
+      </p>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="key-round" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>To authenticate user access and manage your annual subscription license.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="cpu" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>To execute the automated constraint-solving algorithm and generate exam invigilation rosters.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="receipt" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>To issue subscription receipts, tax invoices, and account notifications.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="headset" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>To provide technical customer support.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="storage" class="text-xl font-bold text-navy-900">3. Data Storage, Local Processing &amp; Security</h2>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="hard-drive" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Browser-Local Storage:</strong> Invigismart Pro&trade; utilizes modern browser-based storage technologies (localStorage and encrypted local state) to allow rapid local roster generation without unnecessary server transmission.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="lock" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Data Security:</strong> All communications between your web browser and our servers are encrypted using Industry Standard Transport Layer Security (HTTPS/TLS).</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="shield-check" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">No Unnecessary Third-Party Sharing:</strong> We do not sell, rent, or trade your school&rsquo;s personal data or staff lists to advertisers or third parties.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="third-parties" class="text-xl font-bold text-navy-900">4. Third-Party Service Providers</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        We share data only with trusted service providers necessary to deliver our services:
+      </p>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="credit-card" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">PayFast (Pty) Ltd:</strong> Used as our merchant payment gateway for secure billing. View PayFast&rsquo;s privacy policy at <a href="https://www.payfast.co.za" target="_blank" rel="noopener" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">www.payfast.co.za</a>.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="rights" class="text-xl font-bold text-navy-900">5. Your Rights Under POPIA</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        In accordance with the Protection of Personal Information Act (POPIA), you and your staff have the right to:
+      </p>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="eye" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Access:</strong> Request a copy of the personal information we hold about your organization.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="pencil" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Correction:</strong> Request the correction or updating of inaccurate personal data.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="trash-2" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Deletion:</strong> Request the permanent deletion of your account and school database from our active systems upon subscription termination.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="officer" class="text-xl font-bold text-navy-900">6. Information Officer Contact Details</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        For any privacy inquiries, data subject requests, or POPIA concerns, please contact our designated Information Officer:
+      </p>
+      <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:p-6">
+        <dl class="grid sm:grid-cols-2 gap-x-6 gap-y-4 text-[15px] leading-relaxed text-slate-600">
+          <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Information Officer</dt><dd class="mt-0.5">Daniel Prinsloo</dd></div>
+          <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Company</dt><dd class="mt-0.5">Prinsloo Consulting / Invigismart Pro&trade;</dd></div>
+          <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Email</dt><dd class="mt-0.5"><a data-support-email-link href="mailto:daniel@invigismart.online" class="font-semibold text-indigo-600 hover:text-indigo-800 underline"><span data-support-email>daniel@invigismart.online</span></a></dd></div>
+          <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Phone</dt><dd class="mt-0.5"><a data-support-tel-link href="tel:+27763193749" class="font-semibold text-indigo-600 hover:text-indigo-800 underline"><span data-support-phone>+27 76 319 3749</span></a></dd></div>
+          <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Location</dt><dd class="mt-0.5">Gauteng, South Africa</dd></div>
+        </dl>
+      </div>
+      <p class="mt-6 text-[15px] leading-relaxed text-slate-600">
+        See also our
+        <a href="/terms" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">Terms &amp; Conditions of Service</a>.
+      </p>
+    </section>
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="bg-navy-950 text-slate-400 mt-4">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid sm:grid-cols-3 gap-8">
+      <div class="sm:col-span-2">
+        <div class="flex items-center gap-3">
+          <img src="/assets/logo-mark.svg" alt="Invigismart Pro" width="36" height="36" class="w-9 h-9">
+          <span class="font-display font-extrabold text-white tracking-tight">Invigismart <span class="text-emerald-400">Pro</span></span>
+        </div>
+        <p class="mt-4 text-xs leading-relaxed max-w-md">
+          Fair, conflict-free exam invigilation rosters for schools, operated by Prinsloo Consulting.
+          Payments processed securely by PayFast.
+        </p>
+      </div>
+      <div>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-white">Legal</h3>
+        <ul class="mt-4 space-y-2.5 text-sm">
+          <li><a href="/" class="hover:text-white transition">Home</a></li>
+          <li><a href="/terms" class="hover:text-white transition">Terms &amp; Conditions</a></li>
+          <li><a href="/privacy" class="hover:text-white transition">Privacy Policy</a></li>
+          <li><a href="/app" class="hover:text-white transition">Dashboard</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 border-t border-white/10 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between text-xs">
+      <p>&copy; <span id="footerYear">2026</span> Invigismart Pro &mdash; Prinsloo Consulting. All rights reserved.</p>
+      <p class="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <a data-support-email-link href="mailto:daniel@invigismart.online" class="inline-flex items-center gap-1.5 hover:text-white transition">
+          <i data-lucide="mail" class="w-3.5 h-3.5"></i> <span data-support-email>daniel@invigismart.online</span>
+        </a>
+        <a data-support-wa-link href="https://wa.me/27763193749" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 hover:text-white transition">
+          <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> WhatsApp <span data-support-phone>+27 76 319 3749</span>
+        </a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      var year = document.getElementById('footerYear');
+      if (year) year.textContent = new Date().getFullYear();
+      if (window.lucide) lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

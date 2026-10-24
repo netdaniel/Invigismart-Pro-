@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms &amp; Conditions &mdash; Invigismart Pro</title>
+  <meta name="description" content="Terms and Conditions of Service for Invigismart Pro, the exam invigilation rostering platform operated by Prinsloo Consulting.">
+  <!-- Same pinned libraries and palette as the landing page and dashboard,
+       so the legal pages look like part of the same product -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.min.js"
+          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"
+          crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg">
+  <script>
+    /* Invigismart Pro brand palette. Kept identical to landing.html and
+       index.html so the two products share one visual identity. */
+    (function () {
+      if (typeof tailwind === 'undefined' || !tailwind) return;
+      var blue = {
+        50: '#eef6ff', 100: '#d9ecff', 200: '#bcdcff', 300: '#8ec5ff', 400: '#59a6fb',
+        500: '#2f86ee', 600: '#1d6fd8', 700: '#1857ad', 800: '#1a4a8c', 900: '#1b3f74', 950: '#12294d'
+      };
+      var navy = {
+        50: '#f4f6fb', 100: '#e6ebf6', 200: '#c9d4ec', 300: '#9fb2da', 400: '#7189c2',
+        500: '#5068a8', 600: '#3e4f8b', 700: '#33406f', 800: '#263563', 900: '#1a2b5c', 950: '#101a36'
+      };
+      var green = {
+        50: '#e9f9f0', 100: '#cdf1dd', 200: '#9fe4bd', 300: '#66d194', 400: '#34bd6f',
+        500: '#1fae5b', 600: '#128f4a', 700: '#0f723d', 800: '#105c34', 900: '#0f4c2d', 950: '#072a19'
+      };
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: { brand: blue, navy: navy, indigo: blue, emerald: green },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+              display: ['Poppins', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
+            },
+            backgroundImage: {
+              'brand-gradient': 'linear-gradient(135deg,#2f86ee 0%,#1d6fd8 45%,#1fae5b 100%)'
+            }
+          }
+        }
+      };
+    })();
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    section[id], h2[id] { scroll-margin-top: 5.5rem; }
+  </style>
+</head>
+<body class="bg-white text-slate-800 font-sans antialiased">
+
+  <!-- ===================== NAV ===================== -->
+  <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <a href="/" class="flex items-center gap-3 shrink-0" aria-label="Invigismart Pro home">
+        <img src="/assets/logo-mark.svg" alt="Invigismart Pro" width="40" height="40" class="w-10 h-10 shrink-0">
+        <span class="leading-tight">
+          <span class="block font-display font-extrabold text-navy-900 tracking-tight">Invigismart <span class="text-emerald-500">Pro</span></span>
+          <span class="hidden sm:block text-[11px] text-slate-500 font-medium">Exam invigilation rostering</span>
+        </span>
+      </a>
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <a href="/privacy" class="px-3 py-2 text-sm font-semibold text-slate-600 hover:text-indigo-600 transition">Privacy Policy</a>
+        <a href="/" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md transition">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to home
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== CONTENT ===================== -->
+  <main class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
+    <p class="text-xs font-bold uppercase tracking-wider text-indigo-600">Legal</p>
+    <h1 class="mt-2 font-display text-3xl sm:text-4xl font-extrabold text-navy-900 tracking-tight">Terms and Conditions of Service</h1>
+    <p class="mt-3 text-sm text-slate-500">Last updated: October 2026</p>
+
+    <p class="mt-8 text-[15px] leading-relaxed text-slate-600">
+      Welcome to <strong class="text-slate-800">Invigismart Pro&trade;</strong>, a Software-as-a-Service (SaaS) platform
+      operated by Prinsloo Consulting. By registering for an account, purchasing a subscription, or using our website and
+      application, you (&ldquo;Customer&rdquo;, &ldquo;School&rdquo;, or &ldquo;User&rdquo;) agree to be bound by the
+      following Terms and Conditions.
+    </p>
+
+    <section class="mt-10">
+      <h2 id="description" class="text-xl font-bold text-navy-900">1. Description of Service</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        Invigismart Pro&trade; provides an automated, web-based exam invigilation scheduling and roster management platform
+        designed for primary, secondary, and tertiary educational institutions.
+      </p>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="subscription" class="text-xl font-bold text-navy-900">2. Subscription Terms &amp; Billing</h2>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="calendar-clock" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Annual SaaS License:</strong> Invigismart Pro&trade; is billed on an annual subscription basis. Each license grants full, unlimited access to the platform for 12 calendar months (365 days) starting from the date of payment or account activation &mdash; covering every exam season, sitting and roster the school generates during that period.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="credit-card" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Payment Processing:</strong> All online payments and subscription renewals are securely processed through PayFast (Pty) Ltd, our authorized payment gateway.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="badge-dollar-sign" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Pricing &amp; Currency:</strong> All prices listed on our website are in South African Rand (ZAR) unless explicitly stated otherwise. We reserve the right to adjust annual subscription pricing prior to any renewal period with 30 days&rsquo; advance notice.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="refunds" class="text-xl font-bold text-navy-900">3. Refund &amp; Cancellation Policy</h2>
+      <p class="mt-2 text-xs font-medium text-slate-400">(PayFast requires a clear refund policy to process payments.)</p>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="x-circle" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Cancellations:</strong> You may cancel your annual subscription at any time prior to your next renewal date through your account dashboard or by contacting support. Cancellation stops the automated renewal at the end of the current 12-month cycle.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="rotate-ccw" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Refund Policy:</strong> Because Invigismart Pro&trade; offers instant digital access and evaluation tools, subscription fees paid for an active 12-month cycle are non-refundable once the account has been activated and used to generate rosters, except where required by the South African Consumer Protection Act (CPA) or in the event of an unresolvable technical service disruption caused directly by us.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="flask-conical" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span><strong class="text-slate-800">Trial &amp; Evaluation:</strong> Free trials are provided strictly as a time-limited evaluation of the platform &mdash; long enough to build and run a full roster for a single exam sitting &mdash; so that a school can decide whether to buy the annual licence that covers its whole exam year. Everything a free trial produces (the on-screen duty sheet and any CSV export) is marked as an evaluation copy and is not a clean, final invigilation document. Clean, unmarked duty sheets and exports, including the server-rendered export, require an active annual subscription. Using free trials in place of a paid licence for live examination periods (for example, repeatedly registering new accounts to avoid the annual fee) is not a permitted use of the service.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="accounts" class="text-xl font-bold text-navy-900">4. User Accounts &amp; Responsibilities</h2>
+      <ul class="mt-3 space-y-3 text-[15px] leading-relaxed text-slate-600">
+        <li class="flex items-start gap-2.5"><i data-lucide="key-round" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>You are responsible for maintaining the confidentiality of your administrator login credentials.</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="shield-check" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>You warrant that you have the lawful authority on behalf of your educational institution to upload administrative data (such as staff lists, subjects, and timetables).</span></li>
+        <li class="flex items-start gap-2.5"><i data-lucide="ban" class="w-4 h-4 mt-1 text-indigo-500 shrink-0"></i><span>You agree not to reverse-engineer, decompile, copy, or resell the Invigismart Pro&trade; platform, constraint solver algorithms, or branding assets.</span></li>
+      </ul>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="ip" class="text-xl font-bold text-navy-900">5. Intellectual Property</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        All software, algorithms, code, interface designs, trademarks, logos, and documentation related to
+        Invigismart Pro&trade; are the exclusive intellectual property of Prinsloo Consulting. Your subscription grants you a
+        non-exclusive, non-transferable, revocable license to use the software for your internal school administrative
+        operations during your active subscription term.
+      </p>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="availability" class="text-xl font-bold text-navy-900">6. Service Availability &amp; Support</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        We strive to maintain a 99.9% portal uptime. Scheduled maintenance will be communicated in advance. Technical support
+        is provided via email at
+        <a href="mailto:daniel@invigismart.online" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">daniel@invigismart.online</a>
+        during standard business hours (Monday &ndash; Friday, 08:00 to 17:00 SAST).
+      </p>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="liability" class="text-xl font-bold text-navy-900">7. Limitation of Liability</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        To the maximum extent permitted by South African law, Prinsloo Consulting shall not be liable for any indirect,
+        incidental, special, or consequential damages resulting from the use or inability to use the service, including data
+        loss or administrative disruptions during school exam periods.
+      </p>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="law" class="text-xl font-bold text-navy-900">8. Governing Law &amp; Jurisdiction</h2>
+      <p class="mt-3 text-[15px] leading-relaxed text-slate-600">
+        These Terms and Conditions are governed by and construed in accordance with the laws of the Republic of South Africa.
+        Any disputes arising under these terms shall be subject to the exclusive jurisdiction of the South African courts.
+      </p>
+    </section>
+
+    <section class="mt-10">
+      <h2 id="contact" class="text-xl font-bold text-navy-900">9. Contact Information</h2>
+      <dl class="mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-4 text-[15px] leading-relaxed text-slate-600">
+        <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Company Name</dt><dd class="mt-0.5">Prinsloo Consulting / Invigismart Pro&trade;</dd></div>
+        <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Contact Email</dt><dd class="mt-0.5"><a data-support-email-link href="mailto:daniel@invigismart.online" class="font-semibold text-indigo-600 hover:text-indigo-800 underline"><span data-support-email>daniel@invigismart.online</span></a></dd></div>
+        <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Contact Phone</dt><dd class="mt-0.5"><a data-support-tel-link href="tel:+27763193749" class="font-semibold text-indigo-600 hover:text-indigo-800 underline"><span data-support-phone>+27 76 319 3749</span></a></dd></div>
+        <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Physical Address</dt><dd class="mt-0.5">Gauteng, South Africa</dd></div>
+        <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Website</dt><dd class="mt-0.5"><a href="https://invigismart.online" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">www.invigismart.online</a></dd></div>
+      </dl>
+      <p class="mt-6 text-[15px] leading-relaxed text-slate-600">
+        Please also read our
+        <a href="/privacy" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">Privacy Policy</a>,
+        which explains how we handle personal information under POPIA and GDPR.
+      </p>
+    </section>
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="bg-navy-950 text-slate-400 mt-4">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid sm:grid-cols-3 gap-8">
+      <div class="sm:col-span-2">
+        <div class="flex items-center gap-3">
+          <img src="/assets/logo-mark.svg" alt="Invigismart Pro" width="36" height="36" class="w-9 h-9">
+          <span class="font-display font-extrabold text-white tracking-tight">Invigismart <span class="text-emerald-400">Pro</span></span>
+        </div>
+        <p class="mt-4 text-xs leading-relaxed max-w-md">
+          Fair, conflict-free exam invigilation rosters for schools, operated by Prinsloo Consulting.
+          Payments processed securely by PayFast.
+        </p>
+      </div>
+      <div>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-white">Legal</h3>
+        <ul class="mt-4 space-y-2.5 text-sm">
+          <li><a href="/" class="hover:text-white transition">Home</a></li>
+          <li><a href="/terms" class="hover:text-white transition">Terms &amp; Conditions</a></li>
+          <li><a href="/privacy" class="hover:text-white transition">Privacy Policy</a></li>
+          <li><a href="/app" class="hover:text-white transition">Dashboard</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 border-t border-white/10 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between text-xs">
+      <p>&copy; <span id="footerYear">2026</span> Invigismart Pro &mdash; Prinsloo Consulting. All rights reserved.</p>
+      <p class="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <a data-support-email-link href="mailto:daniel@invigismart.online" class="inline-flex items-center gap-1.5 hover:text-white transition">
+          <i data-lucide="mail" class="w-3.5 h-3.5"></i> <span data-support-email>daniel@invigismart.online</span>
+        </a>
+        <a data-support-wa-link href="https://wa.me/27763193749" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 hover:text-white transition">
+          <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> WhatsApp <span data-support-phone>+27 76 319 3749</span>
+        </a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      var year = document.getElementById('footerYear');
+      if (year) year.textContent = new Date().getFullYear();
+      if (window.lucide) lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
