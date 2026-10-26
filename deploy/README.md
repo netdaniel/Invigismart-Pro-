@@ -44,7 +44,7 @@ user and FTP password. That is the whole setup.
   "secure": true,
   "username": "cpaneluser",
   "password": "ftp-password",
-  "remotePath": "/public_html",
+  "remotePath": "/",
   "uploadOnSave": true,
   "useTempFile": true,
   "ignore": [".git/**", ".vscode/**", "server/**", "deploy/**", "*.db"]
@@ -84,6 +84,36 @@ leaves the remote copy in place — remove those by hand or with Option 1.
 
 `useTempFile: true` writes to a temporary name and renames, so a visitor loading
 the page mid-upload never receives a half-written `index.html`.
+
+### Setting the remote path right
+
+`remotePath` (and `FTP_REMOTE_DIR`) are **relative to the FTP account's login
+root**, not to the cPanel home directory. A dedicated FTP account created in
+cPanel is jailed to the directory chosen for it, so the session already starts
+inside `public_html` and the correct value is `/`. Writing `/public_html` there
+would target `public_html/public_html`.
+
+Only the **main cPanel account** (user `shfckyzk`) logs in at the home
+directory, and only that account needs `public_html`.
+
+Do not paste text from the cPanel FTP Accounts screen into these fields. It
+renders entries as `Login: user@domain` with a directory line, and copying that
+verbatim produces a value like `Login: /home/xxx/domains/…/public_ftp`, which is
+not a path at all. `public_ftp` is the anonymous-FTP directory and is **not**
+served as your website, so files uploaded there never appear on the domain.
+
+### `421 Home directory not available`
+
+This is the error to expect when the account's configured directory does not
+exist on the server. The FTP login is accepted, then Pure-FTPd aborts before any
+file transfer, so curl reports a timeout. It is a cPanel-side setting, not a
+network or firewall problem, and no password or TLS change fixes it:
+
+1. cPanel → **FTP Accounts** → the account → **Directory**: set `public_html`.
+2. Save. cPanel creates the directory if it is missing.
+3. Retry. `./deploy/upload-static.sh --apply` now preflights the login and prints
+   this hint instead of five anonymous `FAILED` lines.
+
 
 
 ## Option 3 — cPanel Git Version Control

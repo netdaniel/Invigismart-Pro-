@@ -6,7 +6,7 @@
   "secure": true,
   "username": "YOUR_CPANEL_USER",
   "password": "YOUR_FTP_PASSWORD",
-  "remotePath": "/public_html",
+  "remotePath": "/",
   "uploadOnSave": false,
   "useTempFile": true,
   "openSsh": false,
