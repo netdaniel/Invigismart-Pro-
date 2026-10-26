@@ -13,6 +13,7 @@
 # Usage:
 #   cp deploy/.deploy.env.example .deploy.env     # then fill in user/password
 #   ./deploy/upload-static.sh                     # dry run, shows the plan
+#   ./deploy/upload-static.sh --verify            # check the live site, upload nothing
 #   ./deploy/upload-static.sh --apply             # upload
 #   ./deploy/upload-static.sh --apply --verify    # upload, then check over HTTPS
 #
@@ -90,9 +91,48 @@ for f in "${SITE_FILES[@]}"; do
   printf '            %-30s %8s bytes\n' "$f" "$(wc -c <"$f")"
 done
 
-if [ "$APPLY" -ne 1 ]; then
+# The site is fetched through public DNS, and the zone has been mid-move: while
+# two A records were live, a resolver that cached both hands out either one, so
+# some requests land on the previous host - which has no .htaccess and no
+# privacy.html - and report 404 for pages that are demonstrably present. Naming
+# the address that answered turns that from a mystery into a diagnosis.
+SITE_ORIGIN_IP="${SITE_ORIGIN_IP:-156.155.252.98}"
+
+verify_site() {
   echo
-  echo "Dry run - nothing uploaded. Re-run with --apply to upload."
+  echo "verifying over HTTPS:"
+  local p code size ip stale=0
+  for p in / /landing.html /privacy /terms /privacy.html /terms.html \
+           /assets/timetable-import.js; do
+    printf '  %-30s ' "$p"
+    read -r code size ip < <(curl -s -o /dev/null \
+      -w '%{http_code} %{size_download} %{remote_ip}\n' "$SITE_URL$p")
+    printf '%s  %sb  via %s\n' "$code" "$size" "$ip"
+    if [ "$code" != "200" ] || [ "$ip" != "$SITE_ORIGIN_IP" ]; then
+      stale=1
+    fi
+  done
+
+  if [ "$stale" -ne 0 ]; then
+    echo
+    echo "warning: not every page answered 200 from $SITE_ORIGIN_IP (this host)." >&2
+    echo "  A resolver can still hold the previous host's address, and that server" >&2
+    echo "  has no .htaccess, so /terms and /privacy are 404 there no matter what" >&2
+    echo "  was just uploaded. Ask the authoritative name server instead:" >&2
+    echo "    dig @ns1.clusterdns.co.za invigismart.online A +short" >&2
+    echo "  then clear the local cache (resolvectl flush-caches) and retry." >&2
+  fi
+}
+
+if [ "$APPLY" -ne 1 ]; then
+  if [ "$VERIFY" -eq 1 ]; then
+    verify_site
+    echo
+    echo "Dry run - nothing uploaded (only the live site was checked)."
+  else
+    echo
+    echo "Dry run - nothing uploaded. Re-run with --apply to upload."
+  fi
   exit 0
 fi
 
@@ -174,10 +214,5 @@ fi
 echo "all ${#SITE_FILES[@]} files uploaded"
 
 if [ "$VERIFY" -eq 1 ]; then
-  echo
-  echo "verifying over HTTPS:"
-  for p in / /landing.html /privacy /terms /privacy.html /terms.html /assets/timetable-import.js; do
-    printf '  %-30s ' "$p"
-    curl -s -o /dev/null -w '%{http_code}  %{size_download}b\n' "$SITE_URL$p"
-  done
+  verify_site
 fi
