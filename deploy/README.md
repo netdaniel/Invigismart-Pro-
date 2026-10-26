@@ -202,17 +202,34 @@ caches **both** and then hands out either address, so some visitors reach the ol
 host until the entry expires. Editing the record in place — rather than adding
 the new address and deleting the old one as separate saves — avoids the window.
 
-To leave GitHub Pages, delete the GitHub `A` record(s)
-(`185.199.108.153`, `.109.153`, `.110.153`, `.111.153`) and any `AAAA` records
-(`2606:50c0:800x::153`), then set the two rows above. Do not touch the mail
-records: `MX` stays `10 mx1.tld-mx.com` / `20 mx2.tld-mx.net`, and the `TXT`
-policy `v=spf1 +a +mx +ip4:156.155.252.98 include:relay.mailchannels.net ~all`
-stays as is. Its `+a` term follows the apex `A` record, so it is correct again
-once the apex points back here.
+### Leftovers still in the zone
+
+The apex `A` already points here, so the site resolves correctly. What survived
+the move back are three Pages addresses on *other* names — and one of them is an
+invalid record, because a `CNAME` and an `A` cannot share a name:
+
+| Name | Type | Value | Verdict |
+| --- | --- | --- | --- |
+| `www` | `CNAME` | `invigismart.online` | **keep** — this is what serves `www` |
+| `www` | `A` | `185.199.108.153` | **delete** — shadowed by the `CNAME` today, so it takes `www` straight to GitHub the moment anyone removes the `CNAME` |
+| `mail` | `A` | `185.199.109.153` | **delete** — GitHub Pages, which answers nothing there (`HTTP 000`, certificate mismatch) |
+| `ftp` | `A` | `185.199.110.153` | **delete** — same, and repointing it here would not help: the FTP service's certificate is issued for `dahost11.vpslocal.co.za`, not for `ftp.invigismart.online` |
+
+Nothing needs adding. `www` is served through its `CNAME`, and this host does not
+serve mail at all: `MX` hands incoming mail to `tld-mx.com` / `mx2.tld-mx.net`, so
+a `mail.` record has no job. Do not touch `MX` or the `TXT` SPF policy
+`v=spf1 +a +mx +ip4:156.155.252.98 include:relay.mailchannels.net ~all` — its
+`+a` term follows the apex `A`, which is already correct.
+
+Deleting a record does not expire the copies already cached: each survives its
+remaining `14400`-second TTL, so a resolver can keep handing out
+`185.199.10x.153` for up to four hours. That is what makes `--verify` mix `200`s
+from this host with `404`s from GitHub on the same run — which is why it prints
+the address that answered each page.
 
 TLS needs no work: the host already presents a Let's Encrypt certificate with
 `invigismart.online` and `www.invigismart.online` in its SAN list, so HTTPS
-answers correctly the moment DNS resolves back.
+answers correctly at the apex and at `www`.
 
 Check the change at the authoritative server, which ignores resolver caches:
 
@@ -221,17 +238,22 @@ $ dig @ns1.clusterdns.co.za invigismart.online A +short
 156.155.252.98
 $ dig @ns1.clusterdns.co.za www.invigismart.online CNAME +short
 invigismart.online.
+$ dig @ns1.clusterdns.co.za mail.invigismart.online A +short
+$ dig @ns1.clusterdns.co.za ftp.invigismart.online A +short
 ```
 
-While DNS still points at GitHub, verify the cPanel copy directly by IP — this
-is also how `--apply` was confirmed byte-for-byte:
+The last two print nothing once the leftovers are gone.
+
+To check the cPanel copy directly, bypassing whatever a resolver currently
+returns — this is also how `--apply` was confirmed byte-for-byte:
 
 ```
 $ curl -s --resolve invigismart.online:443:156.155.252.98 \
        https://invigismart.online/landing.html | wc -c
 ```
 
-Leaving the `CNAME` file in the repo keeps Pages claiming the custom domain, so
-GitHub will report a failed DNS check and keep trying to issue certificates.
-That is harmless noise; remove the custom domain in *Settings → Pages* (or delete
-`CNAME`) if you want it to stop.
+The Pages site itself is already gone: `185.199.111.153` answers
+`404 · Site not found · GitHub Pages` for every path, there is no `CNAME` file in
+the repo, and nothing needs unpublishing in *Settings → Pages*. GitHub's edge
+just keeps answering because DNS still sends `www`, `mail` and `ftp` there — so
+deleting those three records is the whole fix.
