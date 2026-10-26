@@ -185,8 +185,15 @@ decide who serves the website:
 
 | Type | Name | Value | TTL |
 | --- | --- | --- | --- |
-| `A` | `invigismart.online` (`@`) | `156.155.252.98` | 7200 |
-| `CNAME` | `www` | `invigismart.online` | 3600 |
+| `A` | `invigismart.online` (`@`) | `156.155.252.98` | 14400 |
+| `CNAME` | `www` | `invigismart.online` | 14400 |
+
+Both records carry a 4-hour TTL, which makes a provider move slow. Lower them to
+`300` *before* the next switch. There is also a wart to expect during one: while
+the old and the new `A` record both exist, a resolver that queries in that window
+caches **both** and then hands out either address, so some visitors reach the old
+host until the entry expires. Editing the record in place — rather than adding
+the new address and deleting the old one as separate saves — avoids the window.
 
 To leave GitHub Pages, delete the GitHub `A` record(s)
 (`185.199.108.153`, `.109.153`, `.110.153`, `.111.153`) and any `AAAA` records
