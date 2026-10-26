@@ -25,9 +25,16 @@ cp deploy/.deploy.env.example .deploy.env   # fill in cPanel/FTP user + password
 ```
 
 `.deploy.env` is gitignored. The script uploads only the files the website is
-made of (`index.html`, `landing.html`, `privacy.html`, `terms.html`,
+made of (`index.html`, `landing.html`, `privacy.html`, `terms.html`, `.htaccess`,
 `assets/*`). `server/`, `.env`, `*.db`, `server/uploads/` and timetable backups
 are never touched, and nothing is deleted on the server.
+
+`.htaccess` is not optional: the pages link to `/terms` and `/privacy`
+(extensionless, the way the Flask app serves them), and on a static host those
+paths only resolve because `.htaccess` rewrites them to the `.html` files. Skip
+it and the legal links 404 — which is exactly the sort of thing a payment
+provider rejects an account over. It also maps `/app` to `index.html`, matching
+the backend's route for the dashboard.
 
 ## Option 2 — upload on save in VS Code (the Dreamweaver replacement)
 
@@ -44,7 +51,7 @@ user and FTP password. That is the whole setup.
   "secure": true,
   "username": "cpaneluser",
   "password": "ftp-password",
-  "remotePath": "/",
+  "remotePath": "/public_html",
   "uploadOnSave": true,
   "useTempFile": true,
   "ignore": [".git/**", ".vscode/**", "server/**", "deploy/**", "*.db"]

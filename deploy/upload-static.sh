@@ -66,11 +66,14 @@ REMOTE_PATH="${REMOTE_PATH%/}"
 REMOTE_URL="ftp://$FTP_HOST/${REMOTE_PATH:+$REMOTE_PATH/}"
 
 # Everything the website is made of. Anything else in the repo stays local.
+# .htaccess belongs here too: it is what makes the extensionless "/terms" and
+# "/privacy" links on the landing page resolve, and the site is broken without it.
 SITE_FILES=(
   index.html
   landing.html
   privacy.html
   terms.html
+  .htaccess
   assets/logo.svg
   assets/logo-mark.svg
   assets/timetable-import.js
@@ -173,7 +176,7 @@ echo "all ${#SITE_FILES[@]} files uploaded"
 if [ "$VERIFY" -eq 1 ]; then
   echo
   echo "verifying over HTTPS:"
-  for p in / /landing.html /privacy.html /terms.html /assets/timetable-import.js; do
+  for p in / /landing.html /privacy /terms /privacy.html /terms.html /assets/timetable-import.js; do
     printf '  %-30s ' "$p"
     curl -s -o /dev/null -w '%{http_code}  %{size_download}b\n' "$SITE_URL$p"
   done

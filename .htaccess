@@ -1,0 +1,22 @@
+# Apache configuration for the static site published to /public_html.
+#
+# The pages link to extensionless legal URLs ("/terms", "/privacy"), because
+# that is what the Flask app serves in development. On a plain static host
+# those paths are 404s: a school - or a payment provider reviewing the account -
+# clicks "Terms & Conditions" and gets "not found". Rewrite them to the files
+# that actually exist. Upload this file with the rest of the site; Apache here
+# allows per-directory overrides, and every directive is wrapped so a host
+# without mod_rewrite still serves the pages normally.
+
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # /terms and /privacy -> the .html files (trailing slash tolerated).
+  RewriteRule ^terms/?$ terms.html [L]
+  RewriteRule ^privacy/?$ privacy.html [L]
+
+  # /app -> the dashboard, so its URL matches the Flask deployment's /app.
+  RewriteRule ^app/?$ index.html [L]
+</IfModule>
