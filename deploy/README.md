@@ -8,7 +8,7 @@ backend in `server/`, which is a separate deployment (see `DEPLOY.md`).
 
 | Access | State | Consequence |
 |---|---|---|
-| SSH (22) | closed | no `git push` deploy target, no `rsync` over SSH |
+| SSH (22) | closed | no `git push` deploy target, no `rsync` over SSH, and **no SFTP** — use FTPS |
 | FTPS (21) | open, explicit TLS | this is the upload channel |
 | cPanel | `https://156.155.252.98:2222` | manage FTP accounts, DNS zone, Git Version Control |
 
@@ -29,12 +29,62 @@ made of (`index.html`, `landing.html`, `privacy.html`, `terms.html`,
 `assets/*`). `server/`, `.env`, `*.db`, `server/uploads/` and timetable backups
 are never touched, and nothing is deleted on the server.
 
-## Option 2 — sync from the IDE
+## Option 2 — upload on save in VS Code (the Dreamweaver replacement)
 
-Copy `.vscode/sftp.json.example` to `.vscode/sftp.json` (gitignored) and fill in
-the user/password, then use the **SFTP** extension (`natizyskunk.sftp`) to
-browse `public_html` and upload individual files. The `ignore` list already
-excludes `server/`, databases and credentials.
+Install the maintained **SFTP** extension (`natizyskunk.sftp`), then open
+`.vscode/sftp.json` (already present, gitignored) and fill in the real cPanel
+user and FTP password. That is the whole setup.
+
+```json
+{
+  "name": "invigismart.online (cPanel FTPS)",
+  "host": "dahost11.vpslocal.co.za",
+  "protocol": "ftp",
+  "port": 21,
+  "secure": true,
+  "username": "cpaneluser",
+  "password": "ftp-password",
+  "remotePath": "/public_html",
+  "uploadOnSave": true,
+  "useTempFile": true,
+  "ignore": [".git/**", ".vscode/**", "server/**", "deploy/**", "*.db"]
+}
+```
+
+Three details matter here, and the common online guides get two of them wrong:
+
+- **`"protocol": "ftp"`, not `"sftp"`.** SFTP is FTP tunnelled over SSH; port 22
+  is closed on this host, so an `sftp`/`22` config fails at connect with
+  `ECONNREFUSED`. The extension speaks plain/secure FTP fine — use it.
+- **`"username"`, not `"user"`.** The extension reads `username`; a `user` key is
+  silently ignored and the login fails with no useful error.
+- **`"secure": true`** turns on explicit TLS for both the control and data
+  connections, which is what Pure-FTPd here expects. If the handshake fails, try
+  `"secure": "control"` (control channel only); if it fails on the certificate
+  name instead, add `"secureOptions": { "rejectUnauthorized": false }` — but
+  prefer fixing the hostname, since connecting as `dahost11.vpslocal.co.za`
+  already matches the certificate.
+
+If your host ever enables real SSH, switch to `"protocol": "sftp"`, `"port": 22`
+and `"remotePath": "/home/cpaneluser/public_html"`.
+
+### What `uploadOnSave` does and does not do
+
+`"uploadOnSave": true` pushes a file the moment you press Ctrl+S — that is the
+Dreamweaver behaviour you want. Two consequences worth knowing:
+
+- Saving **is** publishing. There is no staging step, so Ctrl+S on
+  `index.html` changes the live public site immediately.
+- It honours `ignore`, which is why `server/`, `deploy/`, `.env`, `*.db` and
+  timetable backups are listed. Without that list, saving `server/app.py` would
+  upload your source and any `*.db` would expose pupil data over HTTP.
+
+It uploads and overwrites; it never deletes remote files. Deleting a local file
+leaves the remote copy in place — remove those by hand or with Option 1.
+
+`useTempFile: true` writes to a temporary name and renames, so a visitor loading
+the page mid-upload never receives a half-written `index.html`.
+
 
 ## Option 3 — cPanel Git Version Control
 

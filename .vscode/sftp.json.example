@@ -4,12 +4,14 @@
   "protocol": "ftp",
   "port": 21,
   "secure": true,
-  "user": "YOUR_CPANEL_USER",
+  "username": "YOUR_CPANEL_USER",
   "password": "YOUR_FTP_PASSWORD",
   "remotePath": "/public_html",
   "uploadOnSave": false,
-  "useTempFile": false,
+  "useTempFile": true,
+  "openSsh": false,
   "connectTimeout": 20000,
+  "concurrency": 2,
   "ignore": [
     ".git/**",
     ".vscode/**",
@@ -32,3 +34,4 @@
     ".gitignore"
   ]
 }
+
