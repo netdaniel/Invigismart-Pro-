@@ -112,7 +112,33 @@ network or firewall problem, and no password or TLS change fixes it:
 1. cPanel → **FTP Accounts** → the account → **Directory**: set `public_html`.
 2. Save. cPanel creates the directory if it is missing.
 3. Retry. `./deploy/upload-static.sh --apply` now preflights the login and prints
-   this hint instead of five anonymous `FAILED` lines.
+   this hint instead of a row of anonymous `FAILED` lines.
+
+### The domain directory is not the docroot
+
+`/home/<user>/domains/<domain>` reads like the website root and is easy to pick
+in cPanel, but on a **main domain** it is only a log directory. On this host it
+contains `logs/` — holding `Oct-2026.tar.gz` — and `stats/`, and nothing else:
+
+```
+$ curl -o /dev/null -w '%{http_code}' https://invigismart.online/logs/
+404
+```
+
+A 404 there proves Apache does not serve those folders, so uploading into the
+domain directory succeeds byte-for-byte and changes nothing on the site. That is
+the worst failure mode, because every layer reports success.
+
+The script now refuses a target that contains `logs/` and `stats/` but no
+`index.html`:
+
+```
+Refusing to upload: ftp://dahost11.vpslocal.co.za/ is a cPanel log directory, not a web root.
+```
+
+Set that FTP account's **Directory** to `public_html` so its jail root *is* the
+docroot, then leave `FTP_REMOTE_DIR=/`. `FTP_ALLOW_ANY_DIR=1` overrides the
+check if a host ever genuinely serves such a directory.
 
 
 

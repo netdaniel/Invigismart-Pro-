@@ -113,12 +113,13 @@ if [ "$FTP_INSECURE" = "1" ]; then
   PROBE_OPTS+=(-k)
 fi
 echo "checking login and remote directory..."
-# -v is needed here: curl does not surface the server's FTP reply text for a
-# 421, it only reports "(28) Timeout was reached", which hides the real cause.
-# The trace contains the password, so it is captured into a variable and never
-# printed; only the extracted reply line or curl error is echoed.
-if ! probe_trace=$(curl -v "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
-                      --list-only "$REMOTE_URL" 2>&1 >/dev/null); then
+if ! probe_list=$(curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
+                     --list-only "$REMOTE_URL" 2>/dev/null); then
+  # Re-run verbosely: curl collapses a 421 into "(28) Timeout" and never prints
+  # the server's reply, which hides the real cause. The trace contains the
+  # password, so it is captured into a variable and never printed.
+  probe_trace=$(curl -v "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
+                    --list-only "$REMOTE_URL" 2>&1 >/dev/null || true)
   reply_code=$(printf '%s\n' "$probe_trace" | sed -n 's/^< \([0-9][0-9][0-9]\) .*/\1/p' | tail -n 1)
   reply_text=$(printf '%s\n' "$probe_trace" | sed -n 's/^< [0-9][0-9][0-9] //p' | tail -n 1)
   curl_err=$(printf '%s\n' "$probe_trace" | grep '^curl:' | tail -n 1 || true)
@@ -132,6 +133,20 @@ if ! probe_trace=$(curl -v "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
     550) echo "  The remote directory '$FTP_REMOTE_DIR' does not exist." >&2 ;;
     *)   echo "  Check FTP_HOST, the network and FTP_INSECURE." >&2 ;;
   esac
+  exit 1
+fi
+
+# cPanel will happily point an FTP account at domains/<domain>, which exists and
+# accepts uploads but is only log archives - Apache never serves it. Uploading
+# there reports success and changes nothing on the website, so refuse it.
+if [ "${FTP_ALLOW_ANY_DIR:-0}" != "1" ] \
+   && printf '%s\n' "$probe_list" | grep -qx 'logs' \
+   && printf '%s\n' "$probe_list" | grep -qx 'stats' \
+   && ! printf '%s\n' "$probe_list" | grep -qx 'index.html'; then
+  echo "Refusing to upload: $REMOTE_URL is a cPanel log directory, not a web root." >&2
+  echo "It holds logs/ and stats/ but no index.html, so Apache never serves it." >&2
+  echo "Set that FTP account's Directory to public_html in cPanel and retry." >&2
+  echo "Only set FTP_ALLOW_ANY_DIR=1 if you are certain this is the docroot." >&2
   exit 1
 fi
 echo "login ok"
