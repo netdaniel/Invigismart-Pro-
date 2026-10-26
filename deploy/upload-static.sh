@@ -145,7 +145,7 @@ if [ "${FTP_ALLOW_ANY_DIR:-0}" != "1" ] \
    && ! printf '%s\n' "$probe_list" | grep -qx 'index.html'; then
   echo "Refusing to upload: $REMOTE_URL is a cPanel log directory, not a web root." >&2
   echo "It holds logs/ and stats/ but no index.html, so Apache never serves it." >&2
-  echo "Set that FTP account's Directory to public_html in cPanel and retry." >&2
+  echo "Point FTP_REMOTE_DIR at the real docroot (on this host: /public_html)." >&2
   echo "Only set FTP_ALLOW_ANY_DIR=1 if you are certain this is the docroot." >&2
   exit 1
 fi

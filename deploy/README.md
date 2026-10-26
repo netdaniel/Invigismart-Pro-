@@ -109,36 +109,58 @@ exist on the server. The FTP login is accepted, then Pure-FTPd aborts before any
 file transfer, so curl reports a timeout. It is a cPanel-side setting, not a
 network or firewall problem, and no password or TLS change fixes it:
 
-1. cPanel → **FTP Accounts** → the account → **Directory**: set `public_html`.
-2. Save. cPanel creates the directory if it is missing.
+1. cPanel → **FTP Accounts** → the account → **Directory**: set it to the folder
+   that actually holds the site, relative to the account home.
+2. Save. Do not assume cPanel created it — see the next section for exactly why.
 3. Retry. `./deploy/upload-static.sh --apply` now preflights the login and prints
    this hint instead of a row of anonymous `FAILED` lines.
 
-### The domain directory is not the docroot
+### Finding the docroot, and the `public_html` that went missing
 
-`/home/<user>/domains/<domain>` reads like the website root and is easy to pick
-in cPanel, but on a **main domain** it is only a log directory. On this host it
-contains `logs/` — holding `Oct-2026.tar.gz` — and `stats/`, and nothing else:
-
-```
-$ curl -o /dev/null -w '%{http_code}' https://invigismart.online/logs/
-404
-```
-
-A 404 there proves Apache does not serve those folders, so uploading into the
-domain directory succeeds byte-for-byte and changes nothing on the site. That is
-the worst failure mode, because every layer reports success.
-
-The script now refuses a target that contains `logs/` and `stats/` but no
-`index.html`:
+On this account the FTP jail is `/home/shfckyzk/domains/invigismart.online`, and
+it holds `stats/`, `logs/` and `public_html/`. That `public_html` **is** the
+Apache docroot — and it had gone missing. With no docroot the vhost answers
+`404` for every URL, including `/`, and the fallback error page 404s as well:
 
 ```
-Refusing to upload: ftp://dahost11.vpslocal.co.za/ is a cPanel log directory, not a web root.
+HTTP/2 404
+server: Apache/2
+
+<p>Additionally, a 404 Not Found
+error was encountered while trying to use an ErrorDocument to handle the request.</p>
 ```
 
-Set that FTP account's **Directory** to `public_html` so its jail root *is* the
-docroot, then leave `FTP_REMOTE_DIR=/`. `FTP_ALLOW_ANY_DIR=1` overrides the
-check if a host ever genuinely serves such a directory.
+The server itself was healthy, though: a request that did not carry the domain in
+its `Host:` header got a plain `<html>webserver is functioning normally</html>`.
+That contrast — default page fine, the domain 404 — is the signature of a vhost
+whose document root does not exist. It also explains an FTP jail that looks like
+a logs-only directory.
+
+The reliable way to prove where the docroot is: write a marker over FTP, then ask
+Apache for it **by IP**, so neither DNS nor a cache can lie to you.
+
+```
+$ printf 'PROBE-%s\n' "$(date +%s)" > /tmp/probe.html
+$ curl -sS --ssl-reqd --user "$FTP_USER:$FTP_PASS" \
+       -T /tmp/probe.html "ftp://$FTP_HOST/public_html/index.html"
+$ curl -sk --resolve invigismart.online:443:156.155.252.98 \
+       https://invigismart.online/
+PROBE-1793006042
+```
+
+The marker coming back proves two things at once: that directory is the docroot,
+and this FTP account can write to it. Here it settled the question at
+`FTP_REMOTE_DIR=/public_html`.
+
+Two traps worth knowing:
+
+- **The jail root is not the docroot.** Uploading there drops files next to
+  `logs/` and `stats/`, which Apache never serves: every transfer reports `ok`
+  and the site does not change. `--apply` therefore refuses a target holding
+  `logs/` and `stats/` but no `index.html`, which is what a log directory looks
+  like. `FTP_ALLOW_ANY_DIR=1` overrides that if you are certain.
+- **`public_ftp` is not a web directory** either — it is the anonymous-FTP drop
+  box.
 
 
 
@@ -154,3 +176,48 @@ Both cannot own `invigismart.online` at once: the apex `A` records either point
 at this Apache host (`156.155.252.98`) or at GitHub Pages (`185.199.10x.153`).
 Pick one before changing DNS, and keep the cPanel account alive either way —
 IMAP/SMTP and webmail for `daniel@invigismart.online` still run on it.
+
+### DNS records that make this host serve the domain
+
+The zone lives on the registrar's nameservers (`ns1.clusterdns.co.za`,
+`ns4.clusterdns.org`, …), edited from cPanel → **Zone Editor**. Only two records
+decide who serves the website:
+
+| Type | Name | Value | TTL |
+| --- | --- | --- | --- |
+| `A` | `invigismart.online` (`@`) | `156.155.252.98` | 7200 |
+| `CNAME` | `www` | `invigismart.online` | 3600 |
+
+To leave GitHub Pages, delete the GitHub `A` record(s)
+(`185.199.108.153`, `.109.153`, `.110.153`, `.111.153`) and any `AAAA` records
+(`2606:50c0:800x::153`), then set the two rows above. Do not touch the mail
+records: `MX` stays `10 mx1.tld-mx.com` / `20 mx2.tld-mx.net`, and the `TXT`
+policy `v=spf1 +a +mx +ip4:156.155.252.98 include:relay.mailchannels.net ~all`
+stays as is. Its `+a` term follows the apex `A` record, so it is correct again
+once the apex points back here.
+
+TLS needs no work: the host already presents a Let's Encrypt certificate with
+`invigismart.online` and `www.invigismart.online` in its SAN list, so HTTPS
+answers correctly the moment DNS resolves back.
+
+Check the change at the authoritative server, which ignores resolver caches:
+
+```
+$ dig @ns1.clusterdns.co.za invigismart.online A +short
+156.155.252.98
+$ dig @ns1.clusterdns.co.za www.invigismart.online CNAME +short
+invigismart.online.
+```
+
+While DNS still points at GitHub, verify the cPanel copy directly by IP — this
+is also how `--apply` was confirmed byte-for-byte:
+
+```
+$ curl -s --resolve invigismart.online:443:156.155.252.98 \
+       https://invigismart.online/landing.html | wc -c
+```
+
+Leaving the `CNAME` file in the repo keeps Pages claiming the custom domain, so
+GitHub will report a failed DNS check and keep trying to issue certificates.
+That is harmless noise; remove the custom domain in *Settings → Pages* (or delete
+`CNAME`) if you want it to stop.
