@@ -1082,6 +1082,25 @@ class FrontEndTests(unittest.TestCase):
             self.assertIn("uploadDocument(event)", html)
             self.assertIn("/api/documents", html)
 
+    def test_dashboard_cannot_grant_itself_a_licence(self):
+        # Selling a licence only works if the dashboard cannot mint one. The
+        # page used to add a year to the stored licence at sign-in, which handed
+        # every visitor twelve free months and made the server's 402
+        # subscription_required unreachable. The entitlement must come from
+        # /api/me and the payment form from the billing endpoint.
+        status, html = request("GET", "/app")
+        self.assertEqual(status, 200)
+        self.assertNotIn("renewLicenseSilently", html)
+        self.assertNotIn("renewSubscription", html)
+        self.assertNotIn("expireSubscriptionDemo", html)
+        self.assertNotIn("no payment processed", html)
+        self.assertIn("/api/me", html)
+        self.assertIn("/api/billing/checkout", html)
+        self.assertIn("startCheckout()", html)
+        self.assertIn("invigismart_token_v1", html)
+        # A licence may only be copied from the server's entitlement payload.
+        self.assertIn("sub.currentPeriodEnd", html)
+
     def test_login_and_signup_paths_serve_the_landing_page(self):
         for path in ("/login", "/signup"):
             status, html = request("GET", path)

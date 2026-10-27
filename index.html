@@ -31,11 +31,11 @@
       <form id="authForm" onsubmit="handleAuthLogin(event)" class="space-y-4">
         <div>
           <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">School Name</label>
-          <input type="text" id="authSchoolName" required value="Westridge High School" class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+          <input type="text" id="authSchoolName" required placeholder="e.g. Westridge High School" class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Administrator Email</label>
-          <input type="email" id="authEmail" required value="admin@westridge.edu" class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+          <input type="email" id="authEmail" required placeholder="you@school.edu" class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Password</label>
@@ -59,9 +59,9 @@
       <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
         <i data-lucide="alert-triangle" class="w-8 h-8"></i>
       </div>
-      <h2 class="text-2xl font-bold text-slate-900">Annual Subscription Expired</h2>
+      <h2 class="text-2xl font-bold text-slate-900">Annual Subscription Required</h2>
       <p class="text-sm text-slate-600 mt-2">
-        Your school's 12-month license for <span id="paywallSchoolName" class="font-semibold text-slate-800">Westridge High</span> has ended. Please renew your annual SaaS subscription to continue generating rosters and managing schedules.
+        <span id="paywallSchoolName" class="font-semibold text-slate-800">This school</span> has no active 12-month licence. Subscribe or renew to continue generating rosters and managing schedules.
       </p>
 
       <div class="my-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-left space-y-2 text-xs text-slate-600">
@@ -71,7 +71,7 @@
         </div>
         <div class="flex justify-between">
           <span>Status:</span>
-          <span class="font-bold text-red-600">Expired</span>
+          <span class="font-bold text-red-600">Not active</span>
         </div>
         <div class="flex justify-between">
           <span>Stored Data Safety:</span>
@@ -80,12 +80,13 @@
       </div>
 
       <div class="space-y-3">
-        <button onclick="renewSubscription(365)" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2">
-          <i data-lucide="credit-card" class="w-4 h-4"></i> Renew Subscription (12 Months)
+        <button onclick="startCheckout()" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2">
+          <i data-lucide="credit-card" class="w-4 h-4"></i> Subscribe or Renew (12 Months)
         </button>
         <button onclick="switchTab('billing')" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition">
           View Billing & Account Details
         </button>
+        <p class="text-[10px] text-slate-400 pt-1">Payment is handled by PayFast. The licence is activated by the server when the payment notification arrives.</p>
       </div>
     </div>
   </div>
@@ -177,7 +178,7 @@
           <p class="text-xs text-red-600">Roster auto-generation and modifications are locked. Renew your 12-month license to resume.</p>
         </div>
       </div>
-      <button onclick="renewSubscription(365)" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow transition">
+      <button onclick="startCheckout()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow transition">
         Renew Subscription
       </button>
     </div>
@@ -508,33 +509,32 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Account</div>
-          <div class="mt-2 text-base font-bold text-slate-900" id="billingSchoolName">Westridge High School</div>
-          <div class="text-xs text-slate-500" id="billingEmail">admin@westridge.edu</div>
+          <div class="mt-2 text-base font-bold text-slate-900" id="billingSchoolName">Not signed in</div>
+          <div class="text-xs text-slate-500" id="billingEmail">—</div>
           <div class="mt-3 inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">Annual School Unlimited</div>
         </div>
 
         <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">License Status</div>
-          <div class="mt-2 text-2xl font-bold text-slate-900" id="billingDaysLeft">365 days left</div>
+          <div class="mt-2 text-2xl font-bold text-slate-900" id="billingDaysLeft">—</div>
           <div class="text-xs text-slate-500" id="billingExpiresOn">Expires on —</div>
-          <div class="mt-3"><span id="billingStatusPill" class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">ACTIVE</span></div>
+          <div class="mt-3"><span id="billingStatusPill" class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">—</span></div>
         </div>
 
         <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan Price</div>
-          <div class="mt-2 text-2xl font-bold text-slate-900">$499 <span class="text-xs font-medium text-slate-500">/ year</span></div>
+          <div class="mt-2 text-2xl font-bold text-slate-900" data-plan-price>R1200 / year</div>
           <p class="text-xs text-slate-500 mt-2">Unlimited teachers, exams and rosters. Automatic 1:30 ratio enforcement included.</p>
         </div>
       </div>
 
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4 text-indigo-600"></i> Renew or Extend License</h3>
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i data-lucide="credit-card" class="w-4 h-4 text-indigo-600"></i> Subscription &amp; Payments</h3>
         <div class="flex flex-wrap gap-3">
-          <button onclick="renewSubscription(365)" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow transition">Renew 12 Months</button>
-          <button onclick="renewSubscription(180)" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition">Extend 6 Months</button>
-          <button onclick="expireSubscriptionDemo()" class="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold rounded-xl border border-red-100 transition">Simulate Expiry (Demo)</button>
+          <button onclick="startCheckout()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow transition">Subscribe or Renew 12 Months</button>
+          <a href="landing.html#pricing" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition">Compare Plans</a>
         </div>
-        <p class="text-[10px] text-slate-400">Demo note: payments are simulated locally; no real charges occur in this prototype.</p>
+        <p class="text-[10px] text-slate-400">Charges are processed by PayFast. The 12-month licence is issued by the server when the payment notification arrives, so this page cannot extend it.</p>
       </div>
 
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -584,56 +584,161 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+  /* =========================================================
+     LICENCE — SERVER-ISSUED ONLY
+     This page used to mint its own licence: signing in quietly added a
+     year to whatever the browser had stored, so any school that typed a
+     name got twelve free months and the server's 402
+     subscription_required was never reached. Nothing in this file
+     extends a licence. state.licenseExpiry is only ever a copy of the
+     currentPeriodEnd that /api/me returns.
+     ========================================================= */
+  const TOKEN_KEY = 'invigismart_token_v1';        // the key landing.html writes
+  const API_BASE = (typeof window !== 'undefined' && window.INVIGISMART_API) || '';
+  let entitlementLoaded = false;                   // true once /api/me has answered
+
+  function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
+  function setToken(token) {
+    try { token ? localStorage.setItem(TOKEN_KEY, token) : localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  }
+
+  function api(path, options) {
+    options = options || {};
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getToken();
+    if (token) headers.Authorization = 'Bearer ' + token;
+    const init = { method: options.method || 'GET', headers };
+    if (options.body !== undefined) init.body = JSON.stringify(options.body);
+    return fetch(API_BASE + path, init).then(res => res.text().then(text => {
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+      if (!res.ok) {
+        const err = new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    }));
+  }
+
   function daysLeft() {
     if (!state.licenseExpiry) return 0;
     return Math.max(0, Math.ceil((new Date(state.licenseExpiry) - Date.now()) / 86400000));
   }
   function isLicensed() { return daysLeft() > 0; }
 
-  /* =========================================================
-     AUTH & LICENSE
-     ========================================================= */
+  async function refreshEntitlement() {
+    if (!getToken()) {
+      state.licenseExpiry = null;                  // no session, no licence
+      saveState();
+      return null;
+    }
+    try {
+      const data = await api('/api/me');
+      const sub = (data && data.subscription) || {};
+      if (data && data.user) {
+        state.auth = {
+          school: data.user.school || (state.auth && state.auth.school) || '',
+          email: data.user.email || (state.auth && state.auth.email) || ''
+        };
+      }
+      // The only place a licence can appear: the server said the school is entitled.
+      state.licenseExpiry = (sub.entitled && sub.currentPeriodEnd) ? sub.currentPeriodEnd : null;
+      saveState();
+      return sub;
+    } catch (err) {
+      if (err && err.status === 401) {             // stale session
+        setToken(null);
+        state.licenseExpiry = null;
+        saveState();
+      }
+      // Any other failure (offline, 5xx) keeps the cached value: the school can
+      // still work and the next successful call re-syncs it.
+      return null;
+    }
+  }
+
+  async function bootSession() {
+    const served = /^https?:$/.test(location.protocol);
+    if (served && !getToken()) {
+      window.location.href = '/login';             // sign-in lives on the landing page
+      return;
+    }
+    await refreshEntitlement();
+    if (served && !getToken()) {
+      window.location.href = '/login';             // the session was rejected (401)
+      return;
+    }
+    entitlementLoaded = true;
+    refreshAll();
+  }
+
   function handleAuthLogin(e) {
     e.preventDefault();
-    state.auth = {
-      school: document.getElementById('authSchoolName').value.trim(),
-      email: document.getElementById('authEmail').value.trim()
-    };
-    if (!state.licenseExpiry) renewLicenseSilently(365);
+    const school = document.getElementById('authSchoolName').value.trim();
+    const email = document.getElementById('authEmail').value.trim();
+    if (!school || !email) return;
+    // Served by the backend: accounts and sessions belong to landing.html,
+    // which is the only page that can obtain a licence. Never mint one here.
+    if (/^https?:$/.test(location.protocol)) { window.location.href = '/login'; return; }
+    // Opened straight from disk: keep the local identity for the demo, but the
+    // licence stays empty until the server grants one.
+    state.auth = { school, email };
     saveState();
     refreshAll();
+    refreshEntitlement();
   }
 
   function handleLogout() {
+    setToken(null);
     state.auth = null;
+    state.licenseExpiry = null;
     saveState();
+    // Served by the backend: the landing page owns signing in and out.
+    if (/^https?:$/.test(location.protocol)) { window.location.href = '/'; return; }
     refreshAll();
   }
 
-  function renewLicenseSilently(days) {
-    const base = isLicensed() ? new Date(state.licenseExpiry) : new Date();
-    base.setDate(base.getDate() + days);
-    state.licenseExpiry = base.toISOString();
-  }
-
-  function renewSubscription(days) {
-    renewLicenseSilently(days);
-    saveState();
-    refreshAll();
-    alert('Subscription renewed for ' + days + ' days. Thank you! (Demo — no payment processed.)');
-  }
-
-  function expireSubscriptionDemo() {
-    state.licenseExpiry = new Date(Date.now() - 86400000).toISOString();
-    saveState();
-    refreshAll();
+  function startCheckout() {
+    if (!getToken()) { window.location.href = 'landing.html#pricing'; return; }
+    api('/api/billing/checkout', { method: 'POST', body: { plan: 'annual_school_unlimited' } })
+      .then(data => {
+        if (data && data.fields && data.url) {     // PayFast: signed form, POST it
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = data.url;
+          Object.keys(data.fields).forEach(name => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = data.fields[name];
+            form.appendChild(input);
+          });
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+        if (data && data.url) { window.location.replace(data.url); return; }
+        throw new Error('No checkout URL was returned.');
+      })
+      .catch(err => {
+        if (err && err.status === 401) setToken(null);
+        // The plan and the payment button both live on the landing page, so a
+        // failure there is never a dead end.
+        window.location.href = 'landing.html#pricing';
+      });
   }
 
   function checkPaywall() {
-    const expired = state.auth && !isLicensed();
-    document.getElementById('paywallModal').classList.toggle('hidden', !expired);
-    if (expired) document.getElementById('paywallSchoolName').textContent = state.auth.school;
-    return !expired;
+    // Gate on the licence itself, not on a name having been typed: an
+    // unlicensed visitor is locked out whether or not the login form was used.
+    const locked = entitlementLoaded && !isLicensed();
+    document.getElementById('paywallModal').classList.toggle('hidden', !locked);
+    if (locked) {
+      document.getElementById('paywallSchoolName').textContent = (state.auth && state.auth.school) || 'This school';
+    }
+    return !locked;
   }
 
   /* =========================================================
@@ -1109,7 +1214,9 @@
 
   function refreshHeader() {
     const loggedIn = !!state.auth;
-    document.getElementById('authModal').classList.toggle('hidden', loggedIn);
+    // While the session is still being read from the API an empty identity is
+    // not a login prompt, so the gate only appears once we know there is none.
+    document.getElementById('authModal').classList.toggle('hidden', loggedIn || !entitlementLoaded);
     if (loggedIn) {
       document.getElementById('userSchoolDisplay').textContent = state.auth.school;
       document.getElementById('userEmailDisplay').textContent = state.auth.email;
@@ -1117,22 +1224,23 @@
       document.getElementById('billingEmail').textContent = state.auth.email;
     }
     const d = daysLeft();
+    const active = d > 0;
     const badge = document.getElementById('subStatusBadge');
     const banner = document.getElementById('subExpiredBanner');
     badge.classList.toggle('hidden', !loggedIn);
-    banner.classList.toggle('hidden', !(loggedIn && d === 0));
+    banner.classList.toggle('hidden', !(loggedIn && !active));
     if (loggedIn) {
-      const em = d > 0;
       badge.className = 'hidden sm:flex items-center px-3 py-1 rounded-full text-xs font-semibold border transition ' +
-        (em ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20');
-      document.getElementById('badgeSubText').textContent = em ? 'Active (' + d + ' days left)' : 'Expired';
-      document.getElementById('billingDaysLeft').textContent = d + ' days left';
-      document.getElementById('billingExpiresOn').textContent = state.licenseExpiry ? 'Expires on ' + new Date(state.licenseExpiry).toLocaleDateString() : 'Expires on —';
-      const pill = document.getElementById('billingStatusPill');
-      pill.textContent = em ? 'ACTIVE' : 'EXPIRED';
-      pill.className = 'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ' +
-        (em ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100');
+        (active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20');
+      document.getElementById('badgeSubText').textContent = active ? 'Active (' + d + ' days left)' : 'No active licence';
     }
+    // The billing card always mirrors the licence the server last reported.
+    document.getElementById('billingDaysLeft').textContent = active ? d + ' days left' : 'No active licence';
+    document.getElementById('billingExpiresOn').textContent = state.licenseExpiry ? 'Expires on ' + new Date(state.licenseExpiry).toLocaleDateString() : 'Expires on —';
+    const pill = document.getElementById('billingStatusPill');
+    pill.textContent = active ? 'ACTIVE' : 'EXPIRED';
+    pill.className = 'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ' +
+      (active ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100');
     checkPaywall();
   }
 
@@ -1151,12 +1259,25 @@
   /* =========================================================
      INIT
      ========================================================= */
+  function loadPlanCopy() {
+    // Plan name and price come from the server so the two pages cannot drift.
+    api('/api/health')
+      .then(data => {
+        const cfg = (data && data.config) || {};
+        if (cfg.planName) document.querySelectorAll('[data-plan-name]').forEach(el => { el.textContent = cfg.planName; });
+        if (cfg.planPrice) document.querySelectorAll('[data-plan-price]').forEach(el => { el.textContent = cfg.planPrice; });
+      })
+      .catch(() => { /* offline or opened from disk: keep the built-in default */ });
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     loadState();
-    // Security fix: never prefill password fields with fake values.
+    // Security fix: never prefill identity or password fields with fake values.
     document.getElementById('authPassword').value = '';
     refreshAll();
     if (window.lucide) lucide.createIcons();
+    loadPlanCopy();
+    bootSession();                     // licences come from the server, never from here
   });
   </script>
 </body>

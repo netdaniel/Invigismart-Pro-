@@ -298,9 +298,12 @@ With no gateway credentials set, `ALLOW_MOCK_BILLING` defaults to on. `checkout`
 returns a link to `/mock-checkout`, a local page whose button emits the same
 `customer.subscription.updated` event a live webhook would - so the real
 entitlement path is exercised without touching a payment provider. **Buy annual
-licence** on the landing page (and **Renew License** in the dashboard) both go
-through this flow and land back on `/app?checkout=success`. Use **Simulate Expiry
-(Demo)** to watch the paywall return, then **Renew License** to restore access.
+licence** on the landing page and **Subscribe or Renew 12 Months** in the
+dashboard both go through this flow and land back on `/app?checkout=success`.
+The dashboard cannot grant a licence itself - it only renders the
+`currentPeriodEnd` that `/api/me` reports - so cancelling the subscription in
+the billing panel is enough to watch the paywall return, and buying again
+restores access.
 
 ### Invoices and cancellation
 
