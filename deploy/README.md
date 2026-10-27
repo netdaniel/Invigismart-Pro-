@@ -283,3 +283,33 @@ The Pages site itself is already gone: `185.199.111.153` answers
 the repo, and nothing needs unpublishing in *Settings → Pages*. GitHub's edge
 just keeps answering because DNS still sends `www`, `mail` and `ftp` there — so
 deleting those three records is the whole fix.
+
+## Before you deploy `server/` — probe the host first
+
+`server/` is not a Flask app and needs no `pip install`: `app.py` is a
+standard-library `ThreadingHTTPServer` that binds `127.0.0.1:8080` and expects a
+reverse proxy in front of it. That shape rules hosts out quickly, so probe before
+you provision anything:
+
+```bash
+ssh root@HOST 'bash -s' < deploy/probe-host.sh > host.txt
+# or, already on the host:  sh deploy/probe-host.sh
+```
+
+It installs nothing, writes nothing and reads no passwords. Four lines decide
+whether the backend can live there:
+
+| Line | Must say | If it does not |
+| --- | --- | --- |
+| `init_systemd` | `yes` | The unit in `DEPLOY.md` §3 needs systemd; a bare container needs a supervisor instead |
+| `python3` | `3.8` or newer | The code uses f-strings and `datetime.timezone`; install a newer interpreter |
+| `shared_cpanel` | `no` | Shared cPanel is Apache + PHP: no long-running process, no bound port. It cannot host this |
+| `port_80` / `port_443` | `free`, or already held by a proxy | Whatever holds them needs a `reverse_proxy 127.0.0.1:8080` block, not removal |
+
+Two more lines are worth reading before you commit: `outbound_payfast` answering
+`404`/`200` (any HTTP code) proves TLS and DNS to `api.payfast.co.za` work —
+anything else means the ITN can never be verified; and `disk_slash_var` should
+hold the database, the uploaded PDFs and room to grow.
+
+If the box already serves other sites, do not point Caddy at `:80`/`:443`
+wholesale — add one vhost next to the existing ones, or the other sites fall over.
