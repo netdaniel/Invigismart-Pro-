@@ -38,9 +38,15 @@ the backend's route for the dashboard.
 
 ## Option 2 — upload on save in VS Code (the Dreamweaver replacement)
 
-Install the maintained **SFTP** extension (`natizyskunk.sftp`), then open
-`.vscode/sftp.json` (already present, gitignored) and fill in the real cPanel
-user and FTP password. That is the whole setup.
+Install the maintained **SFTP** extension (`natizyskunk.sftp`) — not
+`liximomo.sftp`, which its own author deprecated in favour of this fork — then
+open `.vscode/sftp.json` (already present, gitignored) and fill in the real
+cPanel user and FTP password. That is the whole setup.
+
+Do **not** then run *SFTP: Config* from the Command Palette: that command exists
+to create the file, and with one already there it either refuses or drops a
+second, empty configuration next to yours — which is how a working setup stops
+uploading for no visible reason.
 
 ```json
 {
@@ -58,13 +64,21 @@ user and FTP password. That is the whole setup.
 }
 ```
 
-Three details matter here, and the common online guides get two of them wrong:
+Five details matter here, and the copy-paste guides circulating online get most of
+them wrong:
 
 - **`"protocol": "ftp"`, not `"sftp"`.** SFTP is FTP tunnelled over SSH; port 22
   is closed on this host, so an `sftp`/`22` config fails at connect with
   `ECONNREFUSED`. The extension speaks plain/secure FTP fine — use it.
+- **`"port": 21` is not optional.** `22` is the extension's default, and it is
+  the value every generic example carries, so omitting the key sends you to a
+  closed port.
+- **`"remotePath": "/public_html"`, not `/`.** `/` is the FTP jail root, which
+  holds `logs/` and `stats/` — Apache never serves it, so uploads "succeed" and
+  the site never changes.
 - **`"username"`, not `"user"`.** The extension reads `username`; a `user` key is
-  silently ignored and the login fails with no useful error.
+  silently ignored and the login fails with no useful error. The value is the
+  whole cPanel FTP account name, `user@domain`, not the bare mailbox name.
 - **`"secure": true`** turns on explicit TLS for both the control and data
   connections, which is what Pure-FTPd here expects. If the handshake fails, try
   `"secure": "control"` (control channel only); if it fails on the certificate
@@ -74,6 +88,18 @@ Three details matter here, and the common online guides get two of them wrong:
 
 If your host ever enables real SSH, switch to `"protocol": "sftp"`, `"port": 22`
 and `"remotePath": "/home/cpaneluser/public_html"`.
+
+Two keys that look plausible and are not:
+
+- **`"openSftp"` does nothing.** It does not exist in the extension's schema.
+  The real key is **`"openSsh"`**, which enables atomic uploads and only works
+  against an OpenSSH server — so it stays `false` here, and its documented
+  prerequisite (`useTempFile` must also be `true`) is already met.
+- **`"useTempFile": false` is the wrong default for a live site.** Set to `true`
+  the extension writes to a temporary name and renames it, so a visitor
+  downloading a page mid-upload cannot receive half a file. On a page that must
+  stay byte-identical for review, that is the difference between "slow" and
+  "broken".
 
 ### What `uploadOnSave` does and does not do
 
