@@ -130,8 +130,11 @@ Upload it without FTP:
   2. Upload -> choose deploy/invigismart-api.zip -> Reload.
   3. Tick the zip -> Extract -> Extract Files. The app root path is prefilled;
      keep it, so server/ and assets/ land in the right place. Delete the zip.
-  4. Create .env there: + File -> name it .env -> Edit -> paste
-     .env.passenger.example and fill in the real values (DEPLOY.md 13.2).
+  4. python3 deploy/make-api-env.py        # -> deploy/invigismart-api.env
+     Upload that file into the app root, then Rename it to ".env" (File Manager
+     -> Settings -> Show Hidden Files, to see it afterwards). By hand instead:
+     + File -> name it .env -> Edit -> paste .env.passenger.example and fill in
+     the real values (DEPLOY.md 13.2).
   5. Setup Python App -> Restart.
 
 Nothing secret is in the archive: no .env, no database, no uploads, no tests.

@@ -14,6 +14,9 @@ invigismart-backup-*.json
 data/
 # Built by deploy/upload-passenger.sh --zip for File Manager uploads.
 deploy/*.zip
+# Built by deploy/make-api-env.py: holds the PayFast merchant key and the live
+# JWT secret, so it must never be committed (DEPLOY.md 13.2).
+deploy/*.env
 .env
 .env.production
 .env.local

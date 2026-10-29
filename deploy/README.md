@@ -49,6 +49,14 @@ state and secrets, and the server has its own.
 second FTP account: upload the archive in **File Manager** and **Extract** it in
 the application root. No credentials are needed for that mode at all.
 
+`make-api-env.py` writes the production `.env` for that app root -
+`deploy/invigismart-api.env`, gitignored, upload it and **Rename** it to `.env`.
+It copies the PayFast values from your `.env`, mints a fresh `JWT_SECRET`,
+pins `APP_BASE_URL`, and refuses to replace an existing file without `--force`
+(a new secret signs every school out). Tests feed its output back into
+`config.Config` and assert the production checks pass, so the template cannot
+drift from `server/config.py`.
+
 `--verify` checks over HTTPS: `upload-static.sh` compares the pages byte for
 byte, while `upload-passenger.sh` reads `/api/health` and reports the four values
 that decide whether the deployment can take money (`publicHost`,

@@ -2132,5 +2132,135 @@ class DeployArchiveTests(unittest.TestCase):
         self.assertNotIn(".env", names)
 
 
+class ApiEnvTemplateTests(unittest.TestCase):
+    """deploy/make-api-env.py writes the .env the live backend runs on.
+
+    A template that drifts from server/config.py's production rules fails
+    nowhere locally - the site loads and every checkout is refused at PayFast -
+    so the generated file is fed straight back into Config() here.
+    """
+
+    SCRIPT = os.path.join(os.path.dirname(SERVER_DIR), "deploy", "make-api-env.py")
+
+    SOURCE = [
+        ("PAYFAST_MERCHANT_ID", "10033543"),
+        ("PAYFAST_MERCHANT_KEY", "34xw0ot2cjz69"),
+        ("PAYFAST_ALLOW_NO_PASSPHRASE", "1"),
+        ("PLAN_NAME", "Annual School Unlimited"),
+        ("PLAN_PRICE_AMOUNT", "1200.00"),
+    ]
+
+    @staticmethod
+    def parse(path):
+        values = {}
+        with open(path) as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                values[key] = value.strip().strip('"').strip("'")
+        return values
+
+    def write_source(self, tmp):
+        source = os.path.join(tmp, "source.env")
+        with open(source, "w") as handle:
+            handle.write("# developer settings\n\n")
+            for key, value in self.SOURCE:
+                handle.write("%s=%s\n" % (key, value))
+        return source
+
+    def run_script(self, *args):
+        return subprocess.run(
+            [sys.executable, self.SCRIPT] + list(args),
+            capture_output=True, text=True, timeout=60,
+        )
+
+    def build(self, tmp, *extra):
+        source = self.write_source(tmp)
+        out = os.path.join(tmp, "api.env")
+        return self.run_script("--source", source, "--out", out, *extra), source, out
+
+    def test_generated_env_satisfies_the_production_checks(self):
+        tmp = tempfile.mkdtemp(prefix="invigismart-env-")
+        try:
+            result, _, out = self.build(tmp)
+            self.assertEqual(0, result.returncode, result.stderr[-600:])
+            env = self.parse(out)
+            mode = os.stat(out).st_mode & 0o777
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        self.assertEqual("https://api.invigismart.online", env["APP_BASE_URL"])
+        # Relative, so it resolves beside the app root, not in Passenger's CWD.
+        self.assertEqual("data/invigismart.db", env["DB_PATH"])
+        self.assertEqual("0", env["ALLOW_MOCK_BILLING"])
+        self.assertEqual(64, len(env["JWT_SECRET"]))
+        self.assertEqual("10033543", env["PAYFAST_MERCHANT_ID"])
+        # Holds the merchant key and the session secret until it is uploaded.
+        self.assertEqual(0o600, mode)
+
+        conf = config.Config(env=env)
+        self.assertTrue(conf.public_host)
+        self.assertFalse(conf.jwt_secret_is_ephemeral)
+        self.assertTrue(conf.billing_configured)
+        self.assertFalse(conf.allow_mock_billing)
+        self.assertEqual([], conf.billing_fatal)
+        # Sandbox stays on until a purchase has worked end to end.
+        self.assertTrue(conf.payfast_sandbox)
+
+    def test_refuses_to_replace_the_live_secret_without_force(self):
+        tmp = tempfile.mkdtemp(prefix="invigismart-env-")
+        try:
+            first, source, out = self.build(tmp)
+            self.assertEqual(0, first.returncode, first.stderr[-600:])
+            with open(out) as handle:
+                before = handle.read()
+            second = self.run_script("--source", source, "--out", out)
+            with open(out) as handle:
+                after = handle.read()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        self.assertNotEqual(0, second.returncode)
+        self.assertIn("--force", second.stderr)
+        self.assertIn("signs every school out", second.stderr)
+        self.assertEqual(before, after)
+
+    def test_force_rotates_the_session_secret(self):
+        tmp = tempfile.mkdtemp(prefix="invigismart-env-")
+        try:
+            first, _, out = self.build(tmp)
+            self.assertEqual(0, first.returncode, first.stderr[-600:])
+            before = self.parse(out)["JWT_SECRET"]
+            second, _, _ = self.build(tmp, "--force")
+            self.assertEqual(0, second.returncode, second.stderr[-600:])
+            after = self.parse(out)["JWT_SECRET"]
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        self.assertEqual(64, len(after))
+        self.assertNotEqual(before, after)
+
+    def test_missing_source_pointer_is_reported(self):
+        tmp = tempfile.mkdtemp(prefix="invigismart-env-")
+        try:
+            result = self.run_script(
+                "--source", os.path.join(tmp, "absent.env"),
+                "--out", os.path.join(tmp, "api.env"),
+            )
+            written = os.path.exists(os.path.join(tmp, "api.env"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Cannot read", result.stderr)
+        self.assertFalse(written)
+
+    def test_output_is_gitignored(self):
+        with open(os.path.join(os.path.dirname(SERVER_DIR), ".gitignore")) as handle:
+            patterns = [line.strip() for line in handle if line.strip()]
+        self.assertIn("deploy/*.env", patterns)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

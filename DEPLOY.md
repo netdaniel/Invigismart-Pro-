@@ -820,7 +820,10 @@ server.
 
    Many plans allow only one FTP account and refuse a second ("You have reached
    the maximum number of FTP accounts"). You do not need one: §13.2 has three
-   ways up, and only the first uses FTP.
+   ways up, and only the first uses FTP. On **this** host the single account
+   (`daniel@invigismart.online`) is jailed to the docroot - its `/` lists
+   `index.html`, `landing.html`, `api/`, `assets/` and nothing else - so the
+   application root beside it is unreachable from that login.
 
    Reusing the website's FTP account is possible if you create the application
    inside `public_html` (application root `public_html/invigismart-api`), but the
@@ -841,14 +844,19 @@ Three routes. The file list is identical in all of them - 18 files, and never
 ```
 
 It does not have to be a *new* account. The primary cPanel login - the username
-and password you use for cPanel itself - always exists, always reaches the whole
-home directory, and is never counted against the plan's FTP-account limit:
+and password you use for cPanel itself - always exists, is **not** counted among
+the plan's FTP accounts, and reaches the whole home directory:
 
 ```bash
-FTP_USER=<cpanel username>
-FTP_PASS=<cpanel password>
-BACKEND_REMOTE_DIR=invigismart-api     # relative to the home directory
+FTP_USER=<cpanel username>            # no @domain
+FTP_PASS=<cpanel password>            # the cPanel one, not the FTP account's
+BACKEND_REMOTE_DIR=invigismart-api    # relative to the home directory
 ```
+
+Two things trip people up here: a **530** means the password was the FTP
+sub-account's rather than the cPanel one, and with this login
+`FTP_REMOTE_DIR=public_html` for the static upload (its `/` is the home
+directory, where the docroot is one level down).
 
 Check what a login can reach before spending time on the upload:
 
@@ -857,7 +865,8 @@ curl --ssl-reqd --list-only ftp://dahost11.vpslocal.co.za/ --user 'user:pass'
 ```
 
 A jailed account lists only its own folder; the primary one lists the home
-directory, `invigismart-api` included.
+directory, `invigismart-api` included. If neither does, use route B - it needs
+no credentials at all.
 
 **B. File Manager, no FTP at all.**
 
@@ -878,9 +887,24 @@ releases are **Update from Remote**. It needs a token while the repository is
 private, and it leaves `.git` in the app root - harmless, but routes A and B ship
 nothing extra. Remember to copy `passenger_wsgi.py` over cPanel's generated one.
 
-Then, on any route: create `<application root>/.env` from the template - File
-Manager (`+ File`, named `.env`, then **Edit**), or
-`curl --ftp-create-dirs -T …` after copying it - and fill in `JWT_SECRET`
+Then, on any route: create `<application root>/.env`. It is a dotfile - turn on
+File Manager's **Settings → Show Hidden Files (dotfiles)** to see it afterwards.
+The least error-prone way is to generate it here and upload it:
+
+```bash
+python3 deploy/make-api-env.py     # -> deploy/invigismart-api.env (gitignored)
+```
+
+It copies the PayFast values from your `.env`, mints a **fresh `JWT_SECRET`**
+(dev tokens must not be valid on the live site), pins
+`APP_BASE_URL=https://api.invigismart.online`, keeps `PAYFAST_SANDBOX=1` and
+`ALLOW_MOCK_BILLING=0`, and leaves `DB_PATH` relative so the database lands in
+`<app root>/data/`. Then File Manager → **Upload** that file → **Rename** it to
+`.env` → delete the local copy. It refuses to overwrite an existing file unless
+you pass `--force`, because a new secret signs every school out.
+
+Doing it by hand works too: `+ File`, named `.env`, then **Edit**, copying
+`.env.passenger.example` and filling in `JWT_SECRET`
 (`python3 -c "import secrets; print(secrets.token_hex(32))"`),
 `APP_BASE_URL=https://api.invigismart.online` and the three PayFast values. Keep
 `PAYFAST_SANDBOX=1` until a sandbox purchase works.
