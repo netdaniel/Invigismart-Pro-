@@ -3,15 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Exam Invigilation Roster - SaaS Edition</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <title>Invigismart Pro &mdash; Exam Invigilation Roster</title>
+  <!-- Same pinned libraries as the landing page so the two pages look like one product -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.min.js"
+          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"
+          crossorigin="anonymous"></script>
+  <!-- Brand: web fonts, favicon and the Invigismart Pro palette (sampled from the logo) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg">
+  <script>
+    /* Invigismart Pro brand palette. Kept identical to landing.html, terms.html
+       and privacy.html: `indigo` is remapped to the logo blue so the existing
+       utility classes pick up the brand hue without being renamed. */
+    (function () {
+      /* The Tailwind Play CDN (loaded above) defines `tailwind`; skip if it is blocked. */
+      if (typeof tailwind === 'undefined' || !tailwind) return;
+      var blue = {
+        50: '#eef6ff', 100: '#d9ecff', 200: '#bcdcff', 300: '#8ec5ff', 400: '#59a6fb',
+        500: '#2f86ee', 600: '#1d6fd8', 700: '#1857ad', 800: '#1a4a8c', 900: '#1b3f74', 950: '#12294d'
+      };
+      var navy = {
+        50: '#f4f6fb', 100: '#e6ebf6', 200: '#c9d4ec', 300: '#9fb2da', 400: '#7189c2',
+        500: '#5068a8', 600: '#3e4f8b', 700: '#33406f', 800: '#263563', 900: '#1a2b5c', 950: '#101a36'
+      };
+      var green = {
+        50: '#e9f9f0', 100: '#cdf1dd', 200: '#9fe4bd', 300: '#66d194', 400: '#34bd6f',
+        500: '#1fae5b', 600: '#128f4a', 700: '#0f723d', 800: '#105c34', 900: '#0f4c2d', 950: '#072a19'
+      };
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: { brand: blue, navy: navy, indigo: blue, emerald: green },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+              display: ['Poppins', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif']
+            },
+            backgroundImage: {
+              'brand-gradient': 'linear-gradient(135deg,#2f86ee 0%,#1d6fd8 45%,#1fae5b 100%)'
+            }
+          }
+        }
+      };
+    })();
+  </script>
   <style>
     .modal-backdrop {
       background-color: rgba(15, 23, 42, 0.75);
       backdrop-filter: blur(4px);
+    }
+    /* Duty sheets and rosters are printed from the Teacher View tab: keep the
+       sticky chrome on screen only. */
+    @media print {
+      header, nav, footer, .no-print { display: none !important; }
     }
   </style>
 </head>
@@ -94,17 +140,15 @@
   <!-- TOP SAAS HEADER BAR -->
   <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <div class="bg-indigo-600 p-2 rounded-lg text-white">
-          <i data-lucide="calendar-check" class="w-5 h-5"></i>
-        </div>
+      <a href="/" class="flex items-center space-x-3" aria-label="Invigismart Pro home">
+        <img src="/assets/logo-mark.svg" alt="Invigismart Pro" width="40" height="40" class="w-10 h-10 shrink-0">
         <div>
-          <h1 class="font-bold text-base leading-tight tracking-wide">Invigismart Pro</h1>
+          <h1 class="font-bold text-base leading-tight tracking-wide font-display">Invigismart <span class="text-emerald-400">Pro</span></h1>
           <span class="text-xs text-indigo-400 font-medium flex items-center gap-1">
             <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span> SaaS Cloud Portal
           </span>
         </div>
-      </div>
+      </a>
 
       <!-- SaaS Subscription Badge & Actions -->
       <div class="flex items-center space-x-4">
@@ -159,6 +203,9 @@
       </button>
       <button onclick="switchTab('teacher-view')" id="tab-teacher-view" class="tab-btn py-3.5 px-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
         <i data-lucide="user-check" class="w-4 h-4"></i> Teacher View
+      </button>
+      <button onclick="switchTab('documents')" id="tab-documents" class="tab-btn py-3.5 px-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap">
+        <i data-lucide="folder-open" class="w-4 h-4"></i> Documents
       </button>
       <button onclick="switchTab('billing')" id="tab-billing" class="tab-btn py-3.5 px-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-2 whitespace-nowrap ml-auto">
         <i data-lucide="credit-card" class="w-4 h-4"></i> Subscription & Billing
@@ -331,15 +378,23 @@
           <h2 class="text-lg font-bold text-slate-900">Regular Teaching Schedules</h2>
           <p class="text-xs text-slate-500">Specify when teachers are busy giving normal classes (e.g., Grade 8-10 classes during Grade 12 prelims).</p>
         </div>
-        <div class="flex items-center space-x-2">
+        <div class="flex flex-wrap items-center gap-2">
           <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5">
             <i data-lucide="file-up" class="w-4 h-4"></i> Upload CSV
-            <input type="file" accept=".csv" onchange="uploadSchedulesCSV(event)" class="hidden">
+            <input type="file" accept=".csv,.tsv,.txt" onchange="uploadSchedulesCSV(event)" class="hidden">
           </label>
+          <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5" title="A staff timetable grid (one block per teacher, Monday to Friday) or the 4-column busy-slot CSV">
+            <i data-lucide="table-2" class="w-4 h-4"></i> Upload Staff Timetable
+            <input type="file" accept=".csv,.tsv,.txt" onchange="uploadSchedulesCSV(event)" class="hidden">
+          </label>
+          <button onclick="openDocumentLibrary('timetable')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5" title="Keep the original PDF in the document library">
+            <i data-lucide="file-text" class="w-4 h-4"></i> Upload PDF
+          </button>
           <button onclick="exportSchedulesCSV()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
             <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
           </button>
         </div>
+        <p id="scheduleMsg" class="text-xs text-slate-500 md:text-right"></p>
       </div>
 
       <!-- Add Schedule Form -->
@@ -372,6 +427,15 @@
 
       <!-- Schedule Table -->
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 class="text-sm font-bold text-slate-800">Busy teaching slots</h3>
+          <div class="flex items-center gap-2">
+            <label for="scheduleFilter" class="text-xs text-slate-500">Teacher</label>
+            <select id="scheduleFilter" onchange="renderSchedules()" class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="">All teachers</option>
+            </select>
+          </div>
+        </div>
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-slate-50 text-slate-600 text-xs font-bold border-b border-slate-200">
@@ -394,11 +458,14 @@
           <h2 class="text-lg font-bold text-slate-900">Exam Timetable</h2>
           <p class="text-xs text-slate-500">Register exam sessions with date, period, subject and student count to drive the 1:30 invigilator ratio.</p>
         </div>
-        <div class="flex items-center space-x-2">
+        <div class="flex flex-wrap items-center gap-2">
           <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5">
             <i data-lucide="file-up" class="w-4 h-4"></i> Upload CSV
             <input type="file" accept=".csv" onchange="uploadExamsCSV(event)" class="hidden">
           </label>
+          <button onclick="openDocumentLibrary('exam_timetable')" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5" title="Keep the original PDF in the document library">
+            <i data-lucide="file-text" class="w-4 h-4"></i> Upload PDF
+          </button>
           <button onclick="exportExamsCSV()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
             <i data-lucide="file-down" class="w-4 h-4"></i> Export CSV
           </button>
@@ -499,7 +566,60 @@
       </div>
     </div>
 
-    <!-- 7. SUBSCRIPTION & BILLING TAB -->
+    <!-- 7. DOCUMENTS TAB (server-stored PDFs) -->
+    <div id="content-documents" class="tab-content hidden space-y-6">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Document Library</h2>
+          <p class="text-xs text-slate-500">Keep exam timetables, staff timetables and policies beside the roster data. PDF only, stored with the school account so the library follows you across devices.</p>
+        </div>
+        <div id="documentLimits" class="text-[11px] text-slate-500 text-left md:text-right">Sign in to load this school's storage limits.</div>
+      </div>
+
+      <form id="documentUploadForm" onsubmit="uploadDocument(event)" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-800">Upload a PDF</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="documentFile">PDF file</label>
+            <input type="file" id="documentFile" accept="application/pdf,.pdf" required class="w-full text-xs text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs file:font-semibold">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="documentTitle">Title (optional)</label>
+            <input type="text" id="documentTitle" maxlength="120" placeholder="e.g. June 2026 exam timetable" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="documentCategory">Category</label>
+            <select id="documentCategory" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="exam_timetable">Exam timetable</option>
+              <option value="timetable">Staff timetable</option>
+              <option value="policy">Policy</option>
+              <option value="other" selected>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="submit" id="documentUploadBtn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow transition flex items-center gap-1">
+            <i data-lucide="upload" class="w-4 h-4"></i> Upload PDF
+          </button>
+          <button type="button" onclick="loadDocuments()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Refresh
+          </button>
+          <span id="documentMsg" class="text-xs text-slate-500"></span>
+        </div>
+      </form>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+          <h3 class="text-sm font-bold text-slate-800">Uploaded documents</h3>
+          <span id="documentCount" class="text-[11px] text-slate-500"></span>
+        </div>
+        <ul id="documentsList" class="divide-y divide-slate-100 text-xs text-slate-700">
+          <li class="py-6 px-4 text-center text-slate-400">Open this tab to load the library.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 8. SUBSCRIPTION & BILLING TAB -->
     <div id="content-billing" class="tab-content hidden space-y-6">
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <h2 class="text-lg font-bold text-slate-900">Subscription & Billing</h2>
@@ -538,6 +658,19 @@
       </div>
 
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i data-lucide="life-buoy" class="w-4 h-4 text-indigo-600"></i> Billing Support</h3>
+        <p class="text-xs text-slate-500">A failed payment, an invoice query, or a lapsed account with no password reset: reach a person directly.</p>
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+          <a data-support-email-link href="mailto:daniel@invigismart.online" class="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800 underline">
+            <i data-lucide="mail" class="w-3.5 h-3.5"></i> <span data-support-email>daniel@invigismart.online</span>
+          </a>
+          <a data-support-wa-link href="https://wa.me/27763193749" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 font-semibold text-emerald-600 hover:text-emerald-800 underline">
+            <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> <span data-support-phone>+27 76 319 3749</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i data-lucide="database" class="w-4 h-4 text-indigo-600"></i> Full Account Data Backup</h3>
         <div class="flex flex-wrap gap-3">
           <button onclick="exportJSONBackup()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"><i data-lucide="download" class="w-4 h-4"></i> Download JSON Backup</button>
@@ -552,15 +685,25 @@
 
   <!-- FOOTER -->
   <footer class="bg-slate-900 text-slate-400 border-t border-slate-800 mt-8">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
-      <div>© 2026 Invigismart Pro — Exam Invigilation Roster SaaS</div>
-      <div class="flex items-center gap-3">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px]">
+      <div>&copy; 2026 Invigismart Pro &mdash; Exam Invigilation Roster SaaS</div>
+      <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+        <a data-support-email-link href="mailto:daniel@invigismart.online" class="inline-flex items-center gap-1 hover:text-white transition">
+          <i data-lucide="mail" class="w-3.5 h-3.5"></i> <span data-support-email>daniel@invigismart.online</span>
+        </a>
+        <span class="text-slate-600" aria-hidden="true">&middot;</span>
+        <a data-support-wa-link href="https://wa.me/27763193749" target="_blank" rel="noopener" class="inline-flex items-center gap-1 hover:text-white transition">
+          <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> <span data-support-phone>+27 76 319 3749</span>
+        </a>
+        <span class="text-slate-600" aria-hidden="true">&middot;</span>
         <a href="https://www.instagram.com/bethany_beauty_biosculpture/" target="_blank" rel="noopener" class="inline-flex items-center gap-1 hover:text-white transition" aria-label="Instagram, @bethany_beauty_biosculpture"><i data-lucide="instagram" class="w-3.5 h-3.5"></i> Instagram</a>
         <span class="text-slate-600" aria-hidden="true">&middot;</span>
-        <span class="inline-flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> Annual License &bull; Data stored locally in your browser</span>
+        <span class="inline-flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> Annual License</span>
       </div>
     </div>
   </footer>
+  <!-- Pure timetable-grid parser: no DOM, no storage, testable on its own -->
+  <script src="/assets/timetable-import.js"></script>
   <script>
   /* =========================================================
      STATE & PERSISTENCE
@@ -761,6 +904,14 @@
     });
     if (name === 'generator') renderRosterOutput();
     if (name === 'teacher-view') populateTeacherViewSelect();
+    if (name === 'documents') {
+      if (pendingDocumentCategory) {
+        const sel = document.getElementById('documentCategory');
+        if (sel) sel.value = pendingDocumentCategory;
+        pendingDocumentCategory = null;
+      }
+      loadDocuments();
+    }
     if (window.lucide) lucide.createIcons();
   }
 
@@ -846,7 +997,18 @@
      ========================================================= */
   function populateScheduleTeacherSelect() {
     const sel = document.getElementById('scheduleTeacher');
+    const current = sel.value;
     sel.innerHTML = state.teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('') || '<option value="">— add teachers first —</option>';
+    if (current && state.teachers.some(t => t.id === current)) sel.value = current;
+
+    // The table filter is a second, independent list of the same teachers.
+    const filter = document.getElementById('scheduleFilter');
+    if (filter) {
+      const chosen = filter.value;
+      filter.innerHTML = '<option value="">All teachers</option>' +
+        state.teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+      if (chosen && state.teachers.some(t => t.id === chosen)) filter.value = chosen;
+    }
   }
 
   function addSchedule(e) {
@@ -874,12 +1036,18 @@
 
   function renderSchedules() {
     const tbody = document.getElementById('schedulesTableBody');
-    if (!state.schedules.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="py-6 px-4 text-center text-slate-400">No busy teaching slots registered.</td></tr>';
+    const filter = document.getElementById('scheduleFilter');
+    const teacherId = filter ? filter.value : '';
+    const rows = teacherId ? state.schedules.filter(s => s.teacherId === teacherId) : state.schedules;
+    if (!rows.length) {
+      const empty = teacherId
+        ? 'This teacher has no busy teaching slots.'
+        : 'No busy teaching slots registered.';
+      tbody.innerHTML = `<tr><td colspan="5" class="py-6 px-4 text-center text-slate-400">${empty}</td></tr>`;
       return;
     }
     const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
-    tbody.innerHTML = state.schedules.map(s => `
+    tbody.innerHTML = rows.map(s => `
       <tr>
         <td class="py-3 px-4 font-semibold text-slate-800">${esc(tname(s.teacherId))}</td>
         <td class="py-3 px-4">${esc(s.day)}</td>
@@ -891,20 +1059,85 @@
       </tr>`).join('');
   }
 
+  function setScheduleMsg(text, tone) {
+    const el = document.getElementById('scheduleMsg');
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'text-xs md:text-right ' +
+      (tone === 'error' ? 'text-red-600' : tone === 'ok' ? 'text-emerald-600' : 'text-slate-500');
+  }
+
+  /* Merge a parsed staff timetable grid (teacher rows x Monday..Friday columns,
+     see assets/timetable-import.js) into the workspace. Returns the import
+     stats so the caller can report what actually changed. */
+  function importStaffTimetable(rows) {
+    const importer = window.InvigismartTimetable;
+    if (!importer || typeof importer.parseStaffTimetable !== 'function') {
+      throw new Error('The staff timetable parser did not load.');
+    }
+    const parsed = importer.parseStaffTimetable(rows);
+    const merged = importer.applyToWorkspace(parsed, state.teachers, state.schedules, uid);
+    state.teachers = merged.teachers;
+    state.schedules = merged.schedules;
+    saveState();
+    refreshAll();
+    return merged.stats;
+  }
+
+  /* Accepts both shapes the school can export:
+     - the dashboard's own 4-column busy-slot CSV (Teacher,Day,Period,Class),
+     - a staff timetable grid (teacher, Monday..Friday), which also registers
+       the teachers it finds. */
   function uploadSchedulesCSV(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      const importer = window.InvigismartTimetable;
+      if (importer && typeof importer.isStaffTimetableGrid === 'function') {
+        const grid = importer.csvToRows(reader.result);
+        if (importer.isStaffTimetableGrid(grid)) {
+          let stats;
+          try {
+            stats = importStaffTimetable(grid);
+          } catch (err) {
+            setScheduleMsg(err.message, 'error');
+            e.target.value = '';
+            return;
+          }
+          setScheduleMsg(
+            stats.slotsAdded
+              ? `Imported ${file.name}: ${stats.teachersAdded} new teacher(s) and ${stats.slotsAdded} busy slot(s)` +
+                (stats.slotsSkipped ? `, ${stats.slotsSkipped} duplicate(s) skipped.` : '.')
+              : `Nothing new in ${file.name}${stats.slotsSkipped ? ` — ${stats.slotsSkipped} slot(s) were already registered.` : '.'}`,
+            stats.slotsAdded ? 'ok' : ''
+          );
+          e.target.value = '';
+          return;
+        }
+      }
+
+      let added = 0, unknown = 0;
       const rows = csvToRows(reader.result);
       rows.forEach((row, i) => {
         if (i === 0 && /teacher/i.test(row[0])) return;
         if (row.length >= 4 && row[0]) {
           const t = state.teachers.find(x => x.name.toLowerCase() === row[0].toLowerCase());
-          if (t) state.schedules.push({ id: uid(), teacherId: t.id, day: row[1], period: row[2], klass: row[3] });
+          if (t) {
+            state.schedules.push({ id: uid(), teacherId: t.id, day: row[1], period: row[2], klass: row[3] });
+            added++;
+          } else {
+            unknown++;
+          }
         }
       });
       saveState(); refreshAll();
+      setScheduleMsg(
+        added
+          ? `Added ${added} busy slot(s) from ${file.name}` + (unknown ? ` — ${unknown} row(s) named a teacher who is not registered.` : '.')
+          : `No rows imported. Register the teachers in ${file.name} first, or upload a staff timetable grid.`,
+        added ? 'ok' : 'error'
+      );
       e.target.value = '';
     };
     reader.readAsText(file);
@@ -1162,6 +1395,233 @@
   }
 
   /* =========================================================
+     DOCUMENTS — PDFs stored on the server (not localStorage)
+     ========================================================= */
+  var pendingDocumentCategory = null;   // set by the "Upload PDF" shortcuts
+  var documentIndex = {};               // id -> document, so downloads keep their name
+
+  const DOCUMENT_CATEGORIES = {
+    timetable: 'Staff timetable',
+    exam_timetable: 'Exam timetable',
+    policy: 'Policy',
+    other: 'Other'
+  };
+
+  function openDocumentLibrary(category) {
+    pendingDocumentCategory = DOCUMENT_CATEGORIES[category] ? category : null;
+    switchTab('documents');
+  }
+
+  function setDocumentMsg(text, tone) {
+    const el = document.getElementById('documentMsg');
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'text-xs ' +
+      (tone === 'error' ? 'text-red-600' : tone === 'ok' ? 'text-emerald-600' : 'text-slate-500');
+  }
+
+  /* Same auth and error handling as api(), but the body can be FormData so the
+     browser sets the multipart boundary itself. */
+  function documentRequest(path, options) {
+    options = options || {};
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = 'Bearer ' + token;
+    const init = { method: options.method || 'GET', headers };
+    if (options.body !== undefined) init.body = options.body;
+    return fetch(API_BASE + path, init).then(res => {
+      if (res.ok) return res;
+      return res.text().then(text => {
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+        const err = new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      });
+    });
+  }
+
+  function formatBytes(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function formatUploadedAt(value) {
+    if (!value) return '';
+    const raw = String(value).trim();
+    // The API sends ISO-8601 UTC ("2026-10-29T13:06:21Z"). Rows written by
+    // older builds used SQLite's "YYYY-MM-DD HH:MM:SS" without a zone marker,
+    // so tag those as UTC before parsing.
+    const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw) ? raw.replace(' ', 'T') + 'Z' : raw;
+    const date = new Date(iso);
+    return isNaN(date.getTime()) ? raw : date.toLocaleString();
+  }
+
+  function loadDocuments() {
+    const list = document.getElementById('documentsList');
+    const limits = document.getElementById('documentLimits');
+    if (!list) return;
+    if (!getToken()) {
+      list.innerHTML = '<li class="py-6 px-4 text-center text-slate-400">Sign in to see this school\'s documents.</li>';
+      if (limits) limits.textContent = 'Sign in to load this school\'s storage limits.';
+      return;
+    }
+    setDocumentMsg('Loading…', '');
+    documentRequest('/api/documents')
+      .then(res => res.json())
+      .then(data => {
+        renderDocuments((data && data.documents) || []);
+        renderDocumentLimits(data && data.limits);
+        setDocumentMsg('', '');
+      })
+      .catch(err => {
+        if (err.status === 401) setToken(null);
+        list.innerHTML = '<li class="py-6 px-4 text-center text-slate-400">The document library could not be loaded.</li>';
+        const count = document.getElementById('documentCount');
+        if (count) count.textContent = '';
+        setDocumentMsg(err.message, 'error');
+      });
+  }
+
+  function renderDocumentLimits(limits) {
+    const el = document.getElementById('documentLimits');
+    if (!el) return;
+    if (!limits) { el.textContent = ''; return; }
+    el.innerHTML =
+      `<span class="font-semibold text-slate-700">${limits.count} of ${limits.maxDocuments} documents</span> · ` +
+      `${formatBytes(limits.usedBytes)} of ${formatBytes(limits.maxStorageBytes)} used · ` +
+      `max ${formatBytes(limits.maxBytes)} per file`;
+  }
+
+  function renderDocuments(documents) {
+    const list = document.getElementById('documentsList');
+    const count = document.getElementById('documentCount');
+    if (count) count.textContent = documents.length ? documents.length + (documents.length === 1 ? ' file' : ' files') : '';
+    if (!documents.length) {
+      list.innerHTML = '<li class="py-6 px-4 text-center text-slate-400">No documents yet. Upload a timetable PDF to keep it with this school\'s roster data.</li>';
+      return;
+    }
+    documentIndex = {};
+    documents.forEach(doc => { documentIndex[doc.id] = doc; });
+    list.innerHTML = documents.map(doc => {
+      const category = DOCUMENT_CATEGORIES[doc.category] || 'Other';
+      const id = esc(doc.id);
+      const filename = esc(doc.filename);
+      return `
+        <li class="py-3 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <i data-lucide="file-text" class="w-4 h-4 text-indigo-600 shrink-0"></i>
+              <span class="font-semibold text-slate-800 truncate">${esc(doc.title || doc.filename)}</span>
+              <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">${esc(category)}</span>
+            </div>
+            <div class="text-[11px] text-slate-500 mt-0.5 truncate">
+              ${filename} &middot; ${formatBytes(doc.size)} &middot; ${esc(formatUploadedAt(doc.uploadedAt))}
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="viewDocument('${id}')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded-lg transition">View</button>
+            <button onclick="downloadDocument('${id}')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded-lg transition">Download</button>
+            <button onclick="deleteDocument('${id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          </div>
+        </li>`;
+    }).join('');
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function uploadDocument(e) {
+    e.preventDefault();
+    const input = document.getElementById('documentFile');
+    const btn = document.getElementById('documentUploadBtn');
+    const file = input.files[0];
+    if (!file) { setDocumentMsg('Choose a PDF file to upload.', 'error'); return; }
+    if (!/\.pdf$/i.test(file.name)) { setDocumentMsg('Only PDF files are accepted.', 'error'); return; }
+    if (!getToken()) { setDocumentMsg('Sign in to upload documents.', 'error'); return; }
+
+    const form = new FormData();
+    form.append('file', file);
+    form.append('category', document.getElementById('documentCategory').value);
+    const title = document.getElementById('documentTitle').value.trim();
+    if (title) form.append('title', title);
+
+    btn.disabled = true;
+    btn.classList.add('opacity-60', 'cursor-wait');
+    setDocumentMsg('Uploading ' + file.name + '…', '');
+    documentRequest('/api/documents', { method: 'POST', body: form })
+      .then(res => res.json())
+      .then(data => {
+        input.value = '';
+        document.getElementById('documentTitle').value = '';
+        const doc = (data && data.document) || {};
+        renderDocumentLimits(data && data.limits);
+        setDocumentMsg('Uploaded ' + (doc.title || doc.filename || 'the PDF') + '.', 'ok');
+        loadDocuments();
+      })
+      .catch(err => {
+        if (err.status === 401) setToken(null);
+        setDocumentMsg(err.message, 'error');
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.classList.remove('opacity-60', 'cursor-wait');
+      });
+  }
+
+  /* The API authorises with a bearer header, which a plain link cannot send, so
+     the PDF is fetched and handed to the browser as a blob URL. */
+  function fetchDocumentBlob(id) {
+    return documentRequest('/api/documents/' + encodeURIComponent(id)).then(res => res.blob());
+  }
+
+  function viewDocument(id) {
+    setDocumentMsg('Opening…', '');
+    fetchDocumentBlob(id)
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        setDocumentMsg('', '');
+      })
+      .catch(err => setDocumentMsg(err.message, 'error'));
+  }
+
+  function downloadDocument(id) {
+    setDocumentMsg('Preparing download…', '');
+    const known = documentIndex[id] || {};
+    fetchDocumentBlob(id)
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = known.filename || 'document.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        setDocumentMsg('', '');
+      })
+      .catch(err => setDocumentMsg(err.message, 'error'));
+  }
+
+  function deleteDocument(id) {
+    if (!confirm('Delete this document from the school account? The PDF cannot be recovered.')) return;
+    documentRequest('/api/documents/' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(res => res.json().catch(() => null))
+      .then(data => {
+        if (data && data.limits) renderDocumentLimits(data.limits);
+        setDocumentMsg('Document deleted.', 'ok');
+        loadDocuments();
+      })
+      .catch(err => {
+        if (err.status === 401) setToken(null);
+        setDocumentMsg(err.message, 'error');
+      });
+  }
+
+  /* =========================================================
      SAMPLE DATA
      ========================================================= */
   function loadSampleData() {
@@ -1264,12 +1724,27 @@
      INIT
      ========================================================= */
   function loadPlanCopy() {
-    // Plan name and price come from the server so the two pages cannot drift.
+    // Plan name, price and support contacts come from the server so the two
+    // pages cannot drift apart.
     api('/api/health')
       .then(data => {
         const cfg = (data && data.config) || {};
         if (cfg.planName) document.querySelectorAll('[data-plan-name]').forEach(el => { el.textContent = cfg.planName; });
         if (cfg.planPrice) document.querySelectorAll('[data-plan-price]').forEach(el => { el.textContent = cfg.planPrice; });
+
+        if (cfg.supportEmail) {
+          document.querySelectorAll('[data-support-email]').forEach(el => { el.textContent = cfg.supportEmail; });
+          document.querySelectorAll('[data-support-email-link]').forEach(el => { el.setAttribute('href', 'mailto:' + cfg.supportEmail); });
+        }
+        if (cfg.supportPhone) {
+          document.querySelectorAll('[data-support-phone]').forEach(el => { el.textContent = cfg.supportPhone; });
+        }
+        if (cfg.supportPhoneDial) {
+          document.querySelectorAll('[data-support-tel-link]').forEach(el => { el.setAttribute('href', 'tel:' + cfg.supportPhoneDial); });
+        }
+        if (cfg.supportWhatsappUrl) {
+          document.querySelectorAll('[data-support-wa-link]').forEach(el => { el.setAttribute('href', cfg.supportWhatsappUrl); });
+        }
       })
       .catch(() => { /* offline or opened from disk: keep the built-in default */ });
   }

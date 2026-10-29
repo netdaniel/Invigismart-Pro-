@@ -1,12 +1,13 @@
 # Apache configuration for the static site published to /public_html.
 #
-# The pages link to extensionless legal URLs ("/terms", "/privacy"), because
-# that is what the Flask app serves in development. On a plain static host
-# those paths are 404s: a school - or a payment provider reviewing the account -
-# clicks "Terms & Conditions" and gets "not found". Rewrite them to the files
-# that actually exist. Upload this file with the rest of the site; Apache here
-# allows per-directory overrides, and every directive is wrapped so a host
-# without mod_rewrite still serves the pages normally.
+# The pages link to extensionless URLs ("/terms", "/privacy", "/login",
+# "/signup"), because that is what the Flask app serves in development. On a
+# plain static host those paths are 404s: a school - or a payment provider
+# reviewing the account - clicks "Terms & Conditions" or "Log in" and gets
+# "not found". Rewrite them to the files that actually exist. Upload this file
+# with the rest of the site; Apache here allows per-directory overrides, and
+# every directive is wrapped so a host without mod_rewrite still serves the
+# pages normally.
 
 DirectoryIndex index.html
 
@@ -19,4 +20,11 @@ DirectoryIndex index.html
 
   # /app -> the dashboard, so its URL matches the Flask deployment's /app.
   RewriteRule ^app/?$ index.html [L]
+
+  # /login and /signup -> the landing page, which reads the path it was served
+  # from (landing.html, handleRedirectQuery) and opens the matching modal. The
+  # URL is deliberately left as /login (no [R]), so the modal logic still sees
+  # it and the address bar matches what the links promise.
+  RewriteRule ^login/?$ landing.html [L]
+  RewriteRule ^signup/?$ landing.html [L]
 </IfModule>
