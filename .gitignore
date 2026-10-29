@@ -12,6 +12,8 @@ invigismart-backup-*.json
 # Runtime data of the Passenger/cPanel layout (DEPLOY.md 13): the SQLite
 # database and uploaded school PDFs, created beside the application root.
 data/
+# Built by deploy/upload-passenger.sh --zip for File Manager uploads.
+deploy/*.zip
 .env
 .env.production
 .env.local

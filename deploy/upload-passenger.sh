@@ -16,8 +16,11 @@
 #   ./deploy/upload-passenger.sh                  # dry run, shows the plan
 #   ./deploy/upload-passenger.sh --apply          # upload
 #   ./deploy/upload-passenger.sh --apply --verify # upload, then check /api/health
+#   ./deploy/upload-passenger.sh --zip            # no FTP: build a File Manager zip
 #
-# Credentials come from .deploy.env (gitignored) or the environment.
+# Credentials come from .deploy.env (gitignored) or the environment. FTP is not
+# the only way up: many cPanel plans allow a single FTP account, so --zip builds
+# the same file list into an archive for File Manager's Upload + Extract.
 
 set -euo pipefail
 
@@ -25,10 +28,12 @@ cd "$(dirname "$0")/.."
 
 APPLY=0
 VERIFY=0
+ZIP=0
 for arg in "$@"; do
   case "$arg" in
     --apply)   APPLY=1 ;;
     --verify)  VERIFY=1 ;;
+    --zip)     ZIP=1 ;;
     -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -61,7 +66,8 @@ REMOTE_URL="ftp://$FTP_HOST/$REMOTE_PATH/"
 
 # What runs. server/tests, server/uploads, the SQLite file and .env are not here
 # on purpose: the first two are development-only, the last two are local state
-# and secrets - the server has its own.
+# and secrets - the server has its own. server/create_demo_account.py is a
+# developer CLI that mints a password, so it stays off the live host too.
 BACKEND_FILES=(
   passenger_wsgi.py
   index.html
@@ -87,12 +93,55 @@ for f in "${BACKEND_FILES[@]}"; do
   [ -f "$f" ] || { echo "missing file: $f" >&2; exit 1; }
 done
 
+print_files() {
+  echo "files     : ${#BACKEND_FILES[@]}"
+  for f in "${BACKEND_FILES[@]}"; do
+    printf '            %-30s %8s bytes\n' "$f" "$(wc -c <"$f" | tr -d ' ')"
+  done
+}
+
+# File Manager route: the same list, in one archive, for hosts that only give
+# you one FTP account (or none you can point at the application root).
+if [ "$ZIP" -eq 1 ]; then
+  # ZIP_PATH overrides the output (the test suite builds into a temp dir).
+  ZIP_PATH="${ZIP_PATH:-deploy/invigismart-api.zip}"
+  echo "archive   : $ZIP_PATH  (uploaded by hand, no FTP)"
+  print_files
+  rm -f "$ZIP_PATH"
+  python3 - "$ZIP_PATH" "${BACKEND_FILES[@]}" <<'PY'
+import sys, zipfile
+
+archive, files = sys.argv[1], sys.argv[2:]
+# Write the folders as their own entries: cPanel's extractor, unzip and Windows
+# Explorer then all recreate them, instead of relying on implied parents.
+dirs = sorted({f.rsplit("/", 1)[0] for f in files if "/" in f})
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+    for d in dirs:
+        z.writestr(d + "/", "")
+    for f in files:
+        z.write(f, f)
+PY
+  echo
+  echo "built $ZIP_PATH - $(wc -c <"$ZIP_PATH" | tr -d ' ') bytes"
+  cat <<'TXT'
+
+Upload it without FTP:
+  1. cPanel -> File Manager -> the application root (invigismart-api).
+  2. Upload -> choose deploy/invigismart-api.zip -> Reload.
+  3. Tick the zip -> Extract -> Extract Files. The app root path is prefilled;
+     keep it, so server/ and assets/ land in the right place. Delete the zip.
+  4. Create .env there: + File -> name it .env -> Edit -> paste
+     .env.passenger.example and fill in the real values (DEPLOY.md 13.2).
+  5. Setup Python App -> Restart.
+
+Nothing secret is in the archive: no .env, no database, no uploads, no tests.
+TXT
+  exit 0
+fi
+
 echo "host      : $FTP_HOST  (FTPS, explicit TLS)"
 echo "app root  : $REMOTE_URL"
-echo "files     : ${#BACKEND_FILES[@]}"
-for f in "${BACKEND_FILES[@]}"; do
-  printf '            %-30s %8s bytes\n' "$f" "$(wc -c <"$f" | tr -d ' ')"
-done
+print_files
 echo
 
 verify_api() {
@@ -156,9 +205,12 @@ fi
 echo "checking login and remote directory..."
 if ! curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "$REMOTE_URL" >/dev/null 2>&1; then
   echo "FTP preflight failed for $REMOTE_URL" >&2
-  echo "Create the application first (cPanel -> Setup Python App), then retry." >&2
-  echo "If the directory genuinely does not exist yet, create it in File Manager:" >&2
-  echo "  $REMOTE_PATH" >&2
+  echo "Either the login is wrong, or this account cannot see $REMOTE_PATH." >&2
+  echo "  - the account may be jailed to public_html; the app root sits beside it" >&2
+  echo "  - the app root may not exist yet: create the application first" >&2
+  echo "  - the primary cPanel login can always write the whole home directory" >&2
+  echo "No second FTP account? ./deploy/upload-passenger.sh --zip, then File" >&2
+  echo "Manager -> Upload -> Extract (DEPLOY.md 13.2)." >&2
   exit 1
 fi
 echo "login ok"

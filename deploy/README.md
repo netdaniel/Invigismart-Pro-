@@ -44,6 +44,11 @@ The backend uploader never ships `server/tests/`, `server/uploads/`, the SQLite
 database or `.env`: the first two are development-only, the last two are local
 state and secrets, and the server has its own.
 
+`upload-passenger.sh --zip` builds those same files into
+`deploy/invigismart-api.zip` and stops, for accounts where cPanel refuses a
+second FTP account: upload the archive in **File Manager** and **Extract** it in
+the application root. No credentials are needed for that mode at all.
+
 `--verify` checks over HTTPS: `upload-static.sh` compares the pages byte for
 byte, while `upload-passenger.sh` reads `/api/health` and reports the four values
 that decide whether the deployment can take money (`publicHost`,

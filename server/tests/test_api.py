@@ -21,6 +21,7 @@ import unittest
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SERVER_DIR = os.path.dirname(HERE)
@@ -2048,6 +2049,87 @@ ALLOW_MOCK_BILLING=0
         status, data = request("GET", "/api/nope", base=self.base)
         self.assertEqual(404, status)
         self.assertIn("error", data)
+
+
+class DeployArchiveTests(unittest.TestCase):
+    """deploy/upload-passenger.sh is the only thing that puts code on cPanel.
+
+    A new server module that is missing from its file list fails at deploy time
+    and nowhere else - Passenger raises on import and the browser gets a blank
+    500 - so the list is pinned here. The archive mode (File Manager) is built
+    from the same list and checked for real, into a temp directory.
+    """
+
+    SCRIPT = os.path.join(os.path.dirname(SERVER_DIR), "deploy", "upload-passenger.sh")
+
+    # Part of the repository, not of the running server: a developer CLI that
+    # writes a demo subscription row and sets a password. Deliberately absent
+    # from the live app root, and pinned as absent below.
+    DEV_ONLY = {"create_demo_account.py"}
+
+    def backend_files(self):
+        with open(self.SCRIPT) as handle:
+            text = handle.read()
+        start = text.index("BACKEND_FILES=(")
+        end = text.index("\n)", start)
+        return [line.strip() for line in text[start:end].splitlines()[1:] if line.strip()]
+
+    def test_every_server_module_is_listed(self):
+        shipped = set(self.backend_files())
+        for name in sorted(os.listdir(SERVER_DIR)):
+            if not name.endswith(".py") or name in self.DEV_ONLY:
+                continue
+            self.assertIn("server/" + name, shipped, name)
+        self.assertIn("passenger_wsgi.py", shipped)
+
+    def test_developer_tools_are_not_listed(self):
+        shipped = set(self.backend_files())
+        for name in self.DEV_ONLY:
+            self.assertNotIn("server/" + name, shipped, name)
+
+    def test_every_listed_file_exists(self):
+        root = os.path.dirname(SERVER_DIR)
+        for name in self.backend_files():
+            self.assertTrue(os.path.isfile(os.path.join(root, name)), name)
+
+    def test_pages_and_assets_are_listed(self):
+        shipped = set(self.backend_files())
+        for name in ("index.html", "landing.html", "privacy.html", "terms.html",
+                     "api-base.js"):
+            self.assertIn(name, shipped)
+        for asset in os.listdir(os.path.join(os.path.dirname(SERVER_DIR), "assets")):
+            self.assertIn("assets/" + asset, shipped, asset)
+
+    def test_secrets_and_local_state_are_never_listed(self):
+        for name in self.backend_files():
+            self.assertFalse(name.startswith(".env"), name)
+            self.assertNotIn(name, (".deploy.env", "deploy/.deploy.env"), name)
+            self.assertFalse(name.endswith(".db"), name)
+            self.assertNotIn("tests/", name, name)
+            self.assertNotIn("uploads", name, name)
+
+    def test_zip_mode_builds_the_same_list(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash is not available")
+        tmp = tempfile.mkdtemp(prefix="invigismart-zip-")
+        archive = os.path.join(tmp, "api.zip")
+        try:
+            result = subprocess.run(
+                ["bash", self.SCRIPT, "--zip"],
+                env=dict(os.environ, ZIP_PATH=archive),
+                capture_output=True, text=True, timeout=120,
+            )
+            self.assertEqual(0, result.returncode, result.stderr[-600:])
+            with zipfile.ZipFile(archive) as bundle:
+                names = bundle.namelist()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        for name in self.backend_files():
+            self.assertIn(name, names)
+        # The folders are entries of their own so every extractor recreates them.
+        self.assertIn("server/", names)
+        self.assertIn("assets/", names)
+        self.assertNotIn(".env", names)
 
 
 if __name__ == "__main__":

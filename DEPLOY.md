@@ -818,6 +818,10 @@ server.
    API_HOST=api.invigismart.online
    ```
 
+   Many plans allow only one FTP account and refuse a second ("You have reached
+   the maximum number of FTP accounts"). You do not need one: §13.2 has three
+   ways up, and only the first uses FTP.
+
    Reusing the website's FTP account is possible if you create the application
    inside `public_html` (application root `public_html/invigismart-api`), but the
    source then lives under the web root: Passenger stops Apache serving it, and
@@ -826,14 +830,58 @@ server.
 
 ### 13.2 Upload and configure
 
+Three routes. The file list is identical in all of them - 18 files, and never
+`.env`, the database, `uploads/` or the tests.
+
+**A. FTP, with an account that can see the application root.**
+
 ```bash
 ./deploy/upload-passenger.sh                  # dry run: 18 files, nothing sent
 ./deploy/upload-passenger.sh --apply          # upload
 ```
 
-Then create `<application root>/.env` from the template - File Manager, or
-`curl --ftp-create-dirs -T .env.passenger.example …` after copying it - and fill
-in `JWT_SECRET` (`python3 -c "import secrets; print(secrets.token_hex(32))"`),
+It does not have to be a *new* account. The primary cPanel login - the username
+and password you use for cPanel itself - always exists, always reaches the whole
+home directory, and is never counted against the plan's FTP-account limit:
+
+```bash
+FTP_USER=<cpanel username>
+FTP_PASS=<cpanel password>
+BACKEND_REMOTE_DIR=invigismart-api     # relative to the home directory
+```
+
+Check what a login can reach before spending time on the upload:
+
+```bash
+curl --ssl-reqd --list-only ftp://dahost11.vpslocal.co.za/ --user 'user:pass'
+```
+
+A jailed account lists only its own folder; the primary one lists the home
+directory, `invigismart-api` included.
+
+**B. File Manager, no FTP at all.**
+
+```bash
+./deploy/upload-passenger.sh --zip      # builds deploy/invigismart-api.zip
+```
+
+Then cPanel → **File Manager** → `invigismart-api` → **Upload** → the zip →
+**Extract** (keep the prefilled app-root path) → delete the zip. The archive
+writes `server/` and `assets/` as their own entries, so every extractor -
+cPanel's, `unzip`, Windows Explorer - recreates the folders.
+
+**C. Git, once, if you would rather pull than upload.**
+
+cPanel → **Git™ Version Control** → **Clone a Repository** with
+`https://github.com/netdaniel/Invigismart-Pro-.git` into `invigismart-api`; later
+releases are **Update from Remote**. It needs a token while the repository is
+private, and it leaves `.git` in the app root - harmless, but routes A and B ship
+nothing extra. Remember to copy `passenger_wsgi.py` over cPanel's generated one.
+
+Then, on any route: create `<application root>/.env` from the template - File
+Manager (`+ File`, named `.env`, then **Edit**), or
+`curl --ftp-create-dirs -T …` after copying it - and fill in `JWT_SECRET`
+(`python3 -c "import secrets; print(secrets.token_hex(32))"`),
 `APP_BASE_URL=https://api.invigismart.online` and the three PayFast values. Keep
 `PAYFAST_SANDBOX=1` until a sandbox purchase works.
 
