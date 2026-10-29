@@ -794,13 +794,96 @@ server.
 
 ### 13.1 One-time cPanel setup
 
+State of `invigismart.online`'s host on 2026-10-29, read back from the server
+(not remembered): the subdomain and the Python application **already exist** —
+`public_html/api/.htaccess` carries the CloudLinux Passenger block
+
+```apache
+PassengerAppRoot "/home/shfckyzk/invigismart-api"
+PassengerBaseURI "/"
+PassengerPython  "/home/shfckyzk/virtualenv/invigismart-api/3.11/bin/python"
+```
+
+so the cPanel user is `shfckyzk`, the application root is
+`/home/shfckyzk/invigismart-api` (outside the docroot — the safe shape), the
+virtualenv is Python **3.11**, and the subdomain's document root is
+`public_html/api`. What is still missing there is **DNS**: `api.invigismart.online`
+answers NXDOMAIN, because the domain's name servers are
+`ns1..ns3.clusterdns.co.za` and `ns4.clusterdns.org`, so a subdomain created in
+cPanel does not publish the A record by itself. Steps 1–2 below are therefore
+only for a fresh host; on this one, do step 0 and then §13.2.
+
+0. **DNS for `api` (the blocker).** Wherever `invigismart.online`'s zone is
+   actually editable — cPanel **Zone Editor** if it lists the domain, otherwise
+   the registrar/client area that owns those name servers — add:
+
+   ```
+   api    A    156.155.252.98    (same value as the apex and www)
+   ```
+
+   Confirm it from outside the host, not from your browser's cache:
+
+   ```bash
+   curl -s -H 'accept: application/dns-json' \
+     'https://cloudflare-dns.com/dns-query?name=api.invigismart.online&type=A'
+   ```
+
+   `"Status": 0` with an `Answer` means it is live. A negative answer is cached
+   for the zone's TTL (14400s here), so check with the resolver above rather than
+   assuming propagation is broken.
+
+   The vhost itself is already in place, which can be proved without waiting for
+   DNS by talking to the IP directly and sending the right name:
+
+   ```bash
+   curl -sk --resolve api.invigismart.online:443:156.155.252.98 \
+     -o /dev/null -w '%{http_code}\n' https://api.invigismart.online/api/health
+   ```
+
+   On 2026-10-29 that returned **500 “Web application could not be started”** - the
+   right answer for an app root that has no entry point yet, and proof that the
+   subdomain, the Passenger configuration and the virtualenv are all wired up. A
+   bare `404` or cPanel's “future home of something quite cool” page would mean the
+   subdomain itself is missing.
+
+   **TLS comes second, not free.** Until cPanel issues a certificate for the
+   subdomain, `https://api.invigismart.online` is served by the server's shared
+   `CN=dahost11.vpslocal.co.za` certificate, so a browser (and PayFast's servers)
+   rejects it with a name mismatch - `curl` exits 60. AutoSSL validates over HTTP,
+   so it can only succeed **after** the A record resolves: cPanel →
+   **SSL/TLS Status** → select `api.invigismart.online` → **Run AutoSSL**. Then
+   turn on **Force HTTPS Redirect** for the subdomain - the app's production guard
+   wants an https `APP_BASE_URL`, and PayFast returns the buyer to it.
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code} verify=%{ssl_verify_result}\n' \
+     https://api.invigismart.online/api/health     # expect 200 verify=0
+   ```
+
 1. **Subdomain Management** → create `api.invigismart.online`. Accept the
-   docroot cPanel suggests (`public_html/api`); it stays empty.
-2. **Setup Python App** → **Create application**:
+   docroot cPanel suggests (`public_html/api`); apart from the `.htaccess`
+   Passenger writes there it should stay empty. `server/wsgi_app.py` 404s
+   `/server/*`, `/.env` and `*.py` through the app, and because the code sits
+   *outside* this docroot, even a broken Passenger cannot serve `.env` as a file.
+
+   One wrinkle: cPanel also drops a placeholder `index.html` there, and the web
+   server serves files that exist **before** it hands a request to Passenger -
+   measured on 2026-10-29, `/` returned that placeholder while
+   `/api/billing/webhook` reached the app. So the placeholder shadows the app's
+   `/` route (PayFast's `return_url` is `/app?...`, which is unaffected). Replace
+   that file with the real `index.html` once the app is up, or delete it and let
+   the app serve `/` itself:
+
+   ```bash
+   curl --ssl-reqd --user "$FTP_USER:$FTP_PASS" -T index.html \
+        "ftp://$FTP_HOST/api/index.html"
+   ```
+
+2. **Setup Python App** → **Create application** (already done here):
 
    | Field | Value |
    |---|---|
-   | Python version | the newest offered (3.9 or later) |
+   | Python version | the newest offered (3.11 on this host) |
    | Application root | `invigismart-api` |
    | Application URL | `api.invigismart.online` |
    | Application startup file | `passenger_wsgi.py` |
@@ -809,27 +892,36 @@ server.
    Leave "Passenger log file" as offered. No packages are needed: the server,
    the bridge and every helper are standard library only, so the virtualenv
    cPanel creates stays empty.
-3. **FTP Management** → add an FTP account with **Directory** `invigismart-api`
-   (the existing website account is jailed to `public_html` and cannot see this
-   folder). Put its credentials in `.deploy.env`:
 
-   ```bash
-   BACKEND_REMOTE_DIR=/          # the new account is already inside the app root
-   API_HOST=api.invigismart.online
-   ```
+3. **FTP is optional, and on this plan it is unusable for the backend.** The one
+   permitted account (`daniel@invigismart.online`) is jailed to the docroot - its
+   `/` lists `index.html`, `landing.html`, `api/`, `assets/` and nothing else - so
+   the application root beside it is invisible to that login. **FTP Accounts**
+   refuses another ("You have reached the maximum number of FTP accounts"). Two
+   ways around it, neither requiring a new account:
 
-   Many plans allow only one FTP account and refuse a second ("You have reached
-   the maximum number of FTP accounts"). You do not need one: §13.2 has three
-   ways up, and only the first uses FTP. On **this** host the single account
-   (`daniel@invigismart.online`) is jailed to the docroot - its `/` lists
-   `index.html`, `landing.html`, `api/`, `assets/` and nothing else - so the
-   application root beside it is unreachable from that login.
+   * **The primary cPanel login.** Username `shfckyzk` (the cPanel user, no
+     `@domain`), password = the **cPanel** password. It is not one of the plan's
+     FTP accounts, it reaches the whole home directory, and it needs no new
+     anything. Keep the website's working account untouched by using the
+     backend-only overrides:
 
-   Reusing the website's FTP account is possible if you create the application
-   inside `public_html` (application root `public_html/invigismart-api`), but the
-   source then lives under the web root: Passenger stops Apache serving it, and
-   `server/wsgi_app.py` returns 404 for `/server/*`, `/.env` and `*.py`
-   (asserted in the tests). Outside `public_html` is still the safer shape.
+     ```bash
+     FTP_USER_BACKEND=shfckyzk
+     FTP_PASS_BACKEND='<cPanel password>'
+     BACKEND_REMOTE_DIR=invigismart-api   # "/" is the home dir on this login
+     ```
+
+     A `530 Access denied` means the password supplied was the FTP account's,
+     not the cPanel one.
+   * **File Manager + the generated zip** - no credentials at all, §13.2 route B.
+
+   Reusing the website's FTP account would only work by creating the application
+   inside `public_html` (`public_html/invigismart-api`): Passenger stops Apache
+   serving that tree, and `server/wsgi_app.py` returns 404 for `/server/*`,
+   `/.env` and `*.py` (asserted in the tests), but the source would then sit under
+   the web root. Outside `public_html` is the safer shape, and it is what this
+   host already has.
 
 ### 13.2 Upload and configure
 
@@ -848,15 +940,21 @@ and password you use for cPanel itself - always exists, is **not** counted among
 the plan's FTP accounts, and reaches the whole home directory:
 
 ```bash
-FTP_USER=<cpanel username>            # no @domain
-FTP_PASS=<cpanel password>            # the cPanel one, not the FTP account's
-BACKEND_REMOTE_DIR=invigismart-api    # relative to the home directory
+FTP_USER_BACKEND=<cpanel username>        # no @domain; keeps FTP_USER for the site
+FTP_PASS_BACKEND=<cpanel password>        # the cPanel one, not the FTP account's
+BACKEND_REMOTE_DIR=invigismart-api        # relative to the home directory
 ```
+
+Those two `*_BACKEND` variables override `FTP_USER`/`FTP_PASS` for this script
+only, which matters here: the website's upload keeps working with its
+docroot-jailed account while the backend goes up through the home-directory
+login, from one `.deploy.env`.
 
 Two things trip people up here: a **530** means the password was the FTP
 sub-account's rather than the cPanel one, and with this login
 `FTP_REMOTE_DIR=public_html` for the static upload (its `/` is the home
-directory, where the docroot is one level down).
+directory, where the docroot is one level down) - which is the other reason to
+split the two logins.
 
 Check what a login can reach before spending time on the upload:
 

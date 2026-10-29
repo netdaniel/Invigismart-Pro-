@@ -49,6 +49,13 @@ state and secrets, and the server has its own.
 second FTP account: upload the archive in **File Manager** and **Extract** it in
 the application root. No credentials are needed for that mode at all.
 
+If you would rather use FTP, the one account a single-account plan allows is
+jailed to the docroot and cannot see the application root, which sits beside it.
+The primary cPanel login (`FTP_USER_BACKEND=shfckyzk` +
+`FTP_PASS_BACKEND=<cPanel password>`, `BACKEND_REMOTE_DIR=invigismart-api`) is not
+counted among the plan's FTP accounts and reaches the home directory; the
+`*_BACKEND` names keep `upload-static.sh` on the account that already works.
+
 `make-api-env.py` writes the production `.env` for that app root -
 `deploy/invigismart-api.env`, gitignored, upload it and **Rename** it to `.env`.
 It copies the PayFast values from your `.env`, mints a fresh `JWT_SECRET`,

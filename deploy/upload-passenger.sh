@@ -45,8 +45,13 @@ if [ -f .deploy.env ]; then
 fi
 
 FTP_HOST="${FTP_HOST:-dahost11.vpslocal.co.za}"
-FTP_USER="${FTP_USER:-}"
-FTP_PASS="${FTP_PASS:-}"
+# The backend login can differ from the website's: a plan that allows a single
+# FTP account keeps that one jailed to the docroot, while the primary cPanel
+# login (username = cPanel user, no @domain) reaches the whole home directory
+# and is not counted against the quota. FTP_USER_BACKEND/FTP_PASS_BACKEND let
+# both live in one .deploy.env without disturbing the static upload.
+FTP_USER="${FTP_USER_BACKEND:-${FTP_USER:-}}"
+FTP_PASS="${FTP_PASS_BACKEND:-${FTP_PASS:-}}"
 # The application root created in "Setup Python App", below the FTP login root.
 FTP_REMOTE_DIR="${BACKEND_REMOTE_DIR:-invigismart-api}"
 FTP_INSECURE="${FTP_INSECURE:-0}"
@@ -193,7 +198,8 @@ fi
 
 if [ -z "$FTP_USER" ] || [ -z "$FTP_PASS" ]; then
   echo "FTP_USER / FTP_PASS are not set." >&2
-  echo "Copy deploy/.deploy.env.example to .deploy.env and fill it in." >&2
+  echo "Copy deploy/.deploy.env.example to .deploy.env and fill it in" >&2
+  echo "(FTP_USER_BACKEND / FTP_PASS_BACKEND override them for this script)." >&2
   exit 1
 fi
 
@@ -211,7 +217,10 @@ if ! curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "$REMOTE_U
   echo "Either the login is wrong, or this account cannot see $REMOTE_PATH." >&2
   echo "  - the account may be jailed to public_html; the app root sits beside it" >&2
   echo "  - the app root may not exist yet: create the application first" >&2
-  echo "  - the primary cPanel login can always write the whole home directory" >&2
+  echo "  - the primary cPanel login can always write the whole home directory:" >&2
+  echo "      FTP_USER_BACKEND=shfckyzk  FTP_PASS_BACKEND=<cPanel password>" >&2
+  echo "    (no @domain in the username; a 530 means the password is the FTP" >&2
+  echo "     account's, not the cPanel one)" >&2
   echo "No second FTP account? ./deploy/upload-passenger.sh --zip, then File" >&2
   echo "Manager -> Upload -> Extract (DEPLOY.md 13.2)." >&2
   exit 1
