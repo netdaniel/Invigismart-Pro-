@@ -540,6 +540,7 @@ Other failures:
 | `unable to open database file` | `/var/lib/invigismart` is missing or not writable by `invigismart` (step 1). |
 | **A school paid and is still locked out** | The ITN was rejected or never arrived (look for a non-`200` on `/api/billing/webhook` in step 7). See the replay procedure below. |
 | PayFast shows **"signature mismatch"** instead of the payment page | `PAYFAST_PASSPHRASE` differs from your PayFast account, or `CHECKOUT_FIELD_ORDER` in `server/payfast.py` no longer matches PayFast's documented field order. No money moved. |
+| PayFast shows **"Merchant unable to receive payments due to invalid account details provided"** (HTTP 400) | The merchant id/key do not belong to the environment being used: live credentials against `sandbox.payfast.co.za` (or the reverse), or the account is not yet activated in PayFast. Check `payfastSandbox` in `/api/health` against the credentials' environment, and that PayFast has verified the account. No money moved. |
 | Cancel reports the gateway is unreachable | The server could not reach `api.payfast.co.za`. Nothing was cancelled and access is unchanged — retry, and check outbound HTTPS from the host. |
 | A year was granted with no payment | Check `PAYFAST_ITN_VERIFICATION`. `off` skips verification entirely; it exists for tests only and must never be set on a public host. |
 | `Manage Billing & Invoices` shows an empty panel | Nothing has been paid on that account yet, so there is no history and nothing to cancel. |
