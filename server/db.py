@@ -5,6 +5,7 @@ is multi-threaded we keep one connection per thread and serialise writes with a
 lock, so the browser can never hold the authoritative record.
 """
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -71,6 +72,13 @@ def utcnow_iso():
 class Store:
     def __init__(self, db_path):
         self.db_path = db_path
+        # SQLite cannot create a file in a directory that does not exist, and the
+        # two places this runs unattended - a container volume and cPanel's
+        # Passenger app - both start with an empty data directory. Failing here
+        # would mean "cannot import application" and a 500 on every URL.
+        parent = os.path.dirname(os.path.abspath(db_path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         self._local = threading.local()
         self._write_lock = threading.RLock()
         self._conn().executescript(SCHEMA)

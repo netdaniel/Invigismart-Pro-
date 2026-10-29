@@ -1824,5 +1824,231 @@ class PayFastGuardTests(unittest.TestCase):
         self.assertIn("PAYFAST_PASSPHRASE", output)
 
 
+class ConfigPathTests(unittest.TestCase):
+    """Paths and directories the two unattended deployments depend on."""
+
+    def test_relative_db_path_is_resolved_against_the_repo_root(self):
+        cfg = config.Config(env={"DB_PATH": "data/invigismart.db"})
+        self.assertTrue(os.path.isabs(cfg.db_path))
+        self.assertEqual(
+            os.path.join(config.REPO_ROOT, "data", "invigismart.db"), cfg.db_path
+        )
+
+    def test_relative_documents_dir_is_resolved_against_the_repo_root(self):
+        cfg = config.Config(env={"DOCUMENTS_DIR": "data/documents"})
+        self.assertEqual(
+            os.path.join(config.REPO_ROOT, "data", "documents"), cfg.documents_dir
+        )
+
+    def test_absolute_paths_are_left_alone(self):
+        cfg = config.Config(
+            env={"DB_PATH": "/var/lib/invigismart/i.db", "DOCUMENTS_DIR": "/srv/docs"}
+        )
+        self.assertEqual("/var/lib/invigismart/i.db", cfg.db_path)
+        self.assertEqual("/srv/docs", cfg.documents_dir)
+
+    def test_blank_paths_fall_back_to_the_defaults(self):
+        cfg = config.Config(env={"DB_PATH": "   ", "DOCUMENTS_DIR": ""})
+        self.assertTrue(cfg.db_path.endswith("invigismart.db"))
+        self.assertTrue(cfg.documents_dir.endswith("uploads"))
+
+    def test_store_creates_a_missing_database_directory(self):
+        # A container volume and a fresh Passenger app both start with an empty
+        # data directory; failing here would surface as "cannot import application".
+        tmp = tempfile.mkdtemp(prefix="invigismart-dirs-")
+        path = os.path.join(tmp, "nested", "deeper", "invigismart.db")
+        store = db.Store(path)
+        try:
+            self.assertTrue(os.path.isfile(path))
+        finally:
+            store.close()
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class WsgiBridgeTests(unittest.TestCase):
+    """The cPanel/Passenger deployment path (DEPLOY.md section 13).
+
+    Passenger does not proxy to a port - it imports passenger_wsgi.py and calls
+    application(environ, start_response). server/wsgi_app.py turns that back into
+    a request for the same Handler every other test drives, so what needs proving
+    is that a real WSGI server gives the same answers: same status codes, same
+    CORS headers, same 404 for the source files, same multipart upload path.
+
+    It runs with the working directory deliberately outside the repository and
+    with its own env file, because that is how cPanel starts a Python app.
+    """
+
+    ENV_FILE_BODY = """\
+DB_PATH=%(tmp)s/wsgi.db
+DOCUMENTS_DIR=%(tmp)s/documents
+JWT_SECRET=wsgi-bridge-secret
+APP_BASE_URL=https://api.example.test
+BILLING_PROVIDER=payfast
+PAYFAST_MERCHANT_ID=%(merchant_id)s
+PAYFAST_MERCHANT_KEY=%(merchant_key)s
+PAYFAST_PASSPHRASE=%(passphrase)s
+PAYFAST_SANDBOX=1
+PAYFAST_ITN_VERIFICATION=api
+PLAN_PRICE_AMOUNT=1200.00
+MAX_DOCUMENT_BYTES=4096
+ALLOW_MOCK_BILLING=0
+"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="invigismart-wsgi-")
+        env_file = os.path.join(cls.tmp, "cpanel.env")
+        with open(env_file, "w") as handle:
+            handle.write(cls.ENV_FILE_BODY % {
+                "tmp": cls.tmp,
+                "merchant_id": PAYFAST_MERCHANT_ID,
+                "merchant_key": PAYFAST_MERCHANT_KEY,
+                "passphrase": PAYFAST_PASSPHRASE,
+            })
+        cls.port = free_port()
+        cls.base = "http://127.0.0.1:%d" % cls.port
+        app_root = os.path.dirname(SERVER_DIR)          # beside passenger_wsgi.py
+        boot = (
+            "import sys\n"
+            "sys.path.insert(0, %r)\n"
+            "from wsgiref.simple_server import make_server, WSGIRequestHandler\n"
+            "import passenger_wsgi\n"
+            "class Quiet(WSGIRequestHandler):\n"
+            "    def log_message(self, *args):\n"
+            "        pass\n"
+            "make_server('127.0.0.1', %d, passenger_wsgi.application,"
+            " handler_class=Quiet).serve_forever()\n"
+        ) % (app_root, cls.port)
+        env = dict(os.environ)
+        env["INVIGISMART_ENV"] = env_file
+        cls.log = open(os.path.join(cls.tmp, "wsgi.log"), "w+")
+        cls.process = subprocess.Popen(
+            [sys.executable, "-c", boot],
+            env=env,
+            cwd=cls.tmp,
+            stdout=cls.log,
+            stderr=cls.log,
+        )
+        wait_healthy(cls.base, cls.process, cls.log)
+
+    @classmethod
+    def tearDownClass(cls):
+        stop_server(cls.process, cls.log)
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def raw(self, method, path, headers=None):
+        """Status, headers and body - for the cases `request` parses as JSON."""
+        req = urllib.request.Request(
+            self.base + path, method=method, headers=dict(headers or {})
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.status, dict(resp.headers), resp.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, dict(exc.headers), exc.read()
+
+    def test_env_file_reaches_the_server(self):
+        status, data = request("GET", "/api/health", base=self.base)
+        self.assertEqual(200, status)
+        cfg = data["config"]
+        self.assertTrue(cfg["publicHost"])
+        self.assertFalse(cfg["ephemeralJwtSecret"])
+        self.assertTrue(cfg["payfastConfigured"])
+        self.assertFalse(cfg["mockBilling"])
+        self.assertEqual(os.path.join(self.tmp, "wsgi.db"), cfg["dbPath"])
+
+    def test_static_pages_are_served_through_the_bridge(self):
+        # These are the pages a visitor reaches on the API host: Apache hands
+        # them to Passenger, so they have to come out of Python.
+        for path in ("/", "/app", "/landing.html", "/terms", "/privacy"):
+            status, _, body = self.raw("GET", path)
+            self.assertEqual(200, status, path)
+            self.assertIn(b"<html", body, path)
+        status, _, body = self.raw("GET", "/api-base.js")
+        self.assertEqual(200, status)
+        self.assertIn(b"INVIGISMART_API", body)
+
+    def test_source_files_and_the_env_file_stay_private(self):
+        for path in ("/server/app.py", "/server/config.py", "/.env",
+                     "/passenger_wsgi.py", "/server/data/wsgi.db"):
+            status, _, _ = self.raw("GET", path)
+            self.assertEqual(404, status, path)
+
+    def test_account_and_billing_endpoints_work(self):
+        status, data = request(
+            "POST", "/api/auth/signup",
+            {"school": "Bridge High", "email": "bridge@example.com",
+             "password": "secret123"},
+            base=self.base,
+        )
+        self.assertEqual(201, status)
+        token = data["token"]
+
+        status, me = request("GET", "/api/me", token=token, base=self.base)
+        self.assertEqual(200, status)
+        self.assertEqual("bridge@example.com", me["user"]["email"])
+
+        status, checkout = request(
+            "POST", "/api/billing/checkout", {"plan": "annual"},
+            token=token, base=self.base,
+        )
+        self.assertEqual(200, status)
+        fields = checkout["fields"]
+        self.assertEqual("payfast", checkout["mode"])
+        # Built from APP_BASE_URL in the env file, not from the request host.
+        self.assertEqual("https://api.example.test/api/billing/webhook",
+                         fields["notify_url"])
+        self.assertEqual("https://api.example.test/app?checkout=success",
+                         fields["return_url"])
+        self.assertEqual("1200.00", fields["amount"])
+        self.assertEqual(["signature"], list(fields)[-1:])
+
+    def test_multipart_upload_survives_the_bridge(self):
+        status, data = request(
+            "POST", "/api/auth/signup",
+            {"school": "Upload High", "email": "upload@example.com",
+             "password": "secret123"},
+            base=self.base,
+        )
+        self.assertEqual(201, status)
+        body, content_type = multipart_upload()
+        status, uploaded = request(
+            "POST", "/api/documents", token=data["token"], raw_body=body,
+            extra_headers={"Content-Type": content_type}, base=self.base,
+        )
+        self.assertEqual(201, status)
+        self.assertEqual("exam-timetable.pdf", uploaded["document"]["filename"])
+
+    def test_oversized_body_is_refused(self):
+        # MAX_DOCUMENT_BYTES=4096 in the env file, so the ceiling is about 1 MB.
+        # A real body, not just a Content-Length header: a header promising bytes
+        # that never arrive would simply block the WSGI server.
+        status, _ = request(
+            "POST", "/api/auth/signup", raw_body=b"x" * (1100 * 1000),
+            extra_headers={"Content-Type": "application/json"}, base=self.base,
+        )
+        self.assertEqual(413, status)
+
+    def test_preflight_and_head(self):
+        status, headers, _ = self.raw("OPTIONS", "/api/billing/checkout", headers={
+            "Origin": "https://invigismart.online",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        })
+        self.assertEqual(204, status)
+        self.assertEqual("*", headers.get("Access-Control-Allow-Origin"))
+        self.assertIn("Authorization", headers.get("Access-Control-Allow-Headers", ""))
+
+        status, headers, body = self.raw("HEAD", "/app")
+        self.assertEqual(200, status)
+        self.assertGreater(int(headers.get("Content-Length") or 0), 0)
+        self.assertEqual(b"", body)
+
+    def test_unknown_api_path_is_json_404(self):
+        status, data = request("GET", "/api/nope", base=self.base)
+        self.assertEqual(404, status)
+        self.assertIn("error", data)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

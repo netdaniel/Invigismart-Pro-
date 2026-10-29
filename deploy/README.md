@@ -1,8 +1,12 @@
 # Uploading the site to the live server
 
 `invigismart.online` is served by **shared cPanel hosting** at `156.155.252.98`
-(Apache/Pure-FTPd). That host runs static files only — it cannot run the Flask
-backend in `server/`, which is a separate deployment (see `DEPLOY.md`).
+(Apache/Pure-FTPd). There is no shell, so uploads go over FTPS.
+
+The plan does include cPanel's **Setup Python App** (Phusion Passenger), which
+*can* run the backend in `server/` on this same account — that is
+`DEPLOY.md` §13 and `upload-passenger.sh`. Without it, `server/` needs a host of
+its own (`DEPLOY.md` §12).
 
 ## What the host actually allows
 
@@ -29,10 +33,26 @@ made of (`index.html`, `landing.html`, `privacy.html`, `terms.html`, `.htaccess`
 `api-base.js`, `assets/*`). `server/`, `.env`, `*.db`, `server/uploads/` and
 timetable backups are never touched, and nothing is deleted on the server.
 
+# Sorting the two uploads
+
+| Script | Uploads | To |
+|---|---|---|
+| `upload-static.sh` | the website: 4 pages, `.htaccess`, `api-base.js`, `assets/*` | `public_html` on the main domain |
+| `upload-passenger.sh` | the backend: `passenger_wsgi.py`, the pages, `api-base.js`, `assets/*`, `server/*.py` | the Python application root (`DEPLOY.md` §13) |
+
+The backend uploader never ships `server/tests/`, `server/uploads/`, the SQLite
+database or `.env`: the first two are development-only, the last two are local
+state and secrets, and the server has its own.
+
+`--verify` checks over HTTPS: `upload-static.sh` compares the pages byte for
+byte, while `upload-passenger.sh` reads `/api/health` and reports the four values
+that decide whether the deployment can take money (`publicHost`,
+`ephemeralJwtSecret`, `billingConfigured`, `mockBilling`) plus the database path.
+
 `api-base.js` is what points the pages at the backend (`window.INVIGISMART_API`).
 Blank means same-origin, which is right when the Python server serves the pages
 itself; set it to the API's origin when the pages live here and the backend runs
-elsewhere. See `DEPLOY.md` §12.
+elsewhere. See `DEPLOY.md` §12 and §13.
 
 `.htaccess` is not optional: the pages link to `/terms` and `/privacy`
 (extensionless, the way the Flask app serves them), and on a static host those
@@ -293,8 +313,9 @@ deleting those three records is the whole fix.
 
 `server/` is not a Flask app and needs no `pip install`: `app.py` is a
 standard-library `ThreadingHTTPServer` that binds `127.0.0.1:8080` and expects a
-reverse proxy in front of it. That shape rules hosts out quickly, so probe before
-you provision anything:
+reverse proxy in front of it — or a WSGI container. cPanel's **Setup Python App**
+(Passenger) is that container, needs no shell and no bound port, and is covered
+separately in `DEPLOY.md` §13; the probe below is for the proxy/VPS shape.
 
 ```bash
 ssh root@HOST 'bash -s' < deploy/probe-host.sh > host.txt
@@ -308,7 +329,7 @@ whether the backend can live there:
 | --- | --- | --- |
 | `init_systemd` | `yes` | The unit in `DEPLOY.md` §3 needs systemd; a bare container needs a supervisor instead |
 | `python3` | `3.8` or newer | The code uses f-strings and `datetime.timezone`; install a newer interpreter |
-| `shared_cpanel` | `no` | Shared cPanel is Apache + PHP: no long-running process, no bound port. It cannot host this |
+| `shared_cpanel` | `no` | Shared cPanel is Apache + PHP: no long-running process, no bound port — *unless* the plan offers Setup Python App, in which case use `DEPLOY.md` §13 instead and this probe does not apply |
 | `port_80` / `port_443` | `free`, or already held by a proxy | Whatever holds them needs a `reverse_proxy 127.0.0.1:8080` block, not removal |
 
 Two more lines are worth reading before you commit: `outbound_payfast` answering

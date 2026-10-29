@@ -643,7 +643,7 @@ https://api.invigismart.online  server/app.py     a container or a VPS
         ▲  PayFast ITN POSTs here (notify_url)
 ```
 
-Three ways to get the second half. Pick one; all of them end at the same
+Four ways to get the second half. Pick one; all of them end at the same
 verification step.
 
 | Path | Cost | Effort | Right when |
@@ -651,6 +651,7 @@ verification step.
 | **A. Render Blueprint** (`render.yaml`) | ~$7/mo + $0.25/GB disk | 15 min, no server admin | you want TLS, restarts and logs handled for you |
 | **B. Docker on any VPS / your own box** | VPS ~$5/mo | 30–45 min; §1–§5 also apply | you already pay for a VPS, or want it in your own country |
 | **C. `cloudflared` tunnel from this laptop** | free | 5 min, laptop must stay on | a demo for one school this week, not a product |
+| **D. cPanel "Setup Python App" (Passenger)** | nothing extra | 20 min, no shell needed | **your current host already offers it — see §13** |
 
 ### Path A — Render Blueprint
 
@@ -769,6 +770,131 @@ ITN arriving (section 8 has the four checks).
   writer on a single machine (section 11). Two instances would each keep a
   different database, and whichever answered an ITN would grant a licence the
   other one cannot see.
+
+## 13. The backend on the same cPanel host (Setup Python App / Passenger)
+
+This is the "host it from my service provider" path, and it needs no second
+provider, no VPS and no shell. cPanel's **Setup Python App** runs the server
+under Phusion Passenger, inside the same account your website is already on.
+
+What changes: Passenger does not proxy to a port. It imports a module and calls
+`application(environ, start_response)`, so a `ThreadingHTTPServer` cannot be the
+entry point. Two files fix that, and neither reimplements anything:
+
+```
+passenger_wsgi.py     Passenger's entry point: loads the env file, exposes application
+server/wsgi_app.py    the seam: WSGI environ -> the real app.Handler -> WSGI response
+```
+
+`server/wsgi_app.py` rebuilds one HTTP request from the WSGI environ, hands it to
+the same `app.Handler` every other test drives, and translates the captured
+response back. Every route, status code and header is therefore identical to
+`python3 server/app.py`; `WsgiBridgeTests` asserts exactly that over a real WSGI
+server.
+
+### 13.1 One-time cPanel setup
+
+1. **Subdomain Management** → create `api.invigismart.online`. Accept the
+   docroot cPanel suggests (`public_html/api`); it stays empty.
+2. **Setup Python App** → **Create application**:
+
+   | Field | Value |
+   |---|---|
+   | Python version | the newest offered (3.9 or later) |
+   | Application root | `invigismart-api` |
+   | Application URL | `api.invigismart.online` |
+   | Application startup file | `passenger_wsgi.py` |
+   | Application entry point | `application` |
+
+   Leave "Passenger log file" as offered. No packages are needed: the server,
+   the bridge and every helper are standard library only, so the virtualenv
+   cPanel creates stays empty.
+3. **FTP Management** → add an FTP account with **Directory** `invigismart-api`
+   (the existing website account is jailed to `public_html` and cannot see this
+   folder). Put its credentials in `.deploy.env`:
+
+   ```bash
+   BACKEND_REMOTE_DIR=/          # the new account is already inside the app root
+   API_HOST=api.invigismart.online
+   ```
+
+   Reusing the website's FTP account is possible if you create the application
+   inside `public_html` (application root `public_html/invigismart-api`), but the
+   source then lives under the web root: Passenger stops Apache serving it, and
+   `server/wsgi_app.py` returns 404 for `/server/*`, `/.env` and `*.py`
+   (asserted in the tests). Outside `public_html` is still the safer shape.
+
+### 13.2 Upload and configure
+
+```bash
+./deploy/upload-passenger.sh                  # dry run: 18 files, nothing sent
+./deploy/upload-passenger.sh --apply          # upload
+```
+
+Then create `<application root>/.env` from the template - File Manager, or
+`curl --ftp-create-dirs -T .env.passenger.example …` after copying it - and fill
+in `JWT_SECRET` (`python3 -c "import secrets; print(secrets.token_hex(32))"`),
+`APP_BASE_URL=https://api.invigismart.online` and the three PayFast values. Keep
+`PAYFAST_SANDBOX=1` until a sandbox purchase works.
+
+Upload **`passenger_wsgi.py` last**, after cPanel has generated its own copy, so
+yours is the one Passenger imports. Then **Setup Python App → Restart** -
+Passenger caches the code and will keep serving the old version otherwise.
+
+### 13.3 Verify, in this order
+
+```bash
+curl -s https://api.invigismart.online/api/health | python3 -m json.tool
+```
+
+* `"publicHost": true` and `"ephemeralJwtSecret": false` - the env file was read.
+* `"billingConfigured": true`, `"mockBilling": false`.
+* `"dbPath"` ends in `/invigismart-api/data/invigismart.db`.
+
+A blank page, a 500 or `Error: cannot import application` means Passenger raised
+on import. cPanel → **Errors** (or the app's log file) shows the traceback; the
+usual causes are a missing `.env` (so the production guard exits on purpose,
+§10) or `PAYFAST_PASSPHRASE` not matching the account.
+
+Then a smoke test through the app itself:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://api.invigismart.online/app
+curl -s -o /dev/null -w '%{http_code}\n' https://api.invigismart.online/server/app.py   # must be 404
+```
+
+Finally point the website at it (`§12`, "Then connect the two halves"):
+`api-base.js` → `window.INVIGISMART_API = 'https://api.invigismart.online';`, then
+`./deploy/upload-static.sh --apply --verify`.
+
+### 13.4 Keep it awake
+
+Passenger shuts an idle app down after a few minutes. That is cheap and correct
+for a dashboard, but PayFast's ITN is an unattended POST that can arrive long
+after the buyer stopped clicking: a cold start then costs the notification a few
+seconds. PayFast retries, so it recovers, but a payment that lands minutes late
+looks like a broken site to a school.
+
+Add a **Cron Job** (cPanel → Cron Jobs, every five minutes) so the process is
+warm during the working day:
+
+```bash
+*/5 6-20 * * 1-5  curl -sS -m 20 https://api.invigismart.online/api/health >/dev/null
+```
+
+### 13.5 What shared hosting still costs you
+
+* **One request at a time per process.** Passenger without threads serialises
+  requests; the roster solver is quick, but two simultaneous exports queue.
+* **No `systemd`, no `journalctl`, no shell.** Logs are the app's log file and
+  `/api/health`; restarts are a button, not a command.
+* **Back up `data/invigismart.db` yourself** (cPanel → Backup, or File Manager).
+  There is no volume snapshot, and a lost database is a lost list of who paid.
+* **Migrating later is easy, in this direction only.** Moving to a VPS (§1–§5)
+  means copying the app root, setting `APP_BASE_URL` and moving DNS - the code
+  path is identical. Moving the other way, from a VPS to cPanel, is the same.
+  But every stored `notify_url` is tied to the hostname, so keep
+  `api.invigismart.online` as the public name and change what sits behind it.
 
 Next practical steps, in order: add the password-reset flow, then `robots.txt` +
 `sitemap.xml` for the domain you just deployed, then a smoke test in your

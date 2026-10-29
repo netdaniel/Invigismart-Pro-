@@ -27,6 +27,23 @@ def _env_int(name, default, env=None):
         return default
 
 
+def _env_path(name, default, env=None):
+    """Absolute path for a path-valued setting.
+
+    A relative value is resolved against the repository root, never against the
+    process working directory. Under systemd and under Passenger (cPanel's
+    Python apps) the working directory is chosen by the server, not by us, so a
+    relative database path would quietly open a *different*, empty database.
+    """
+    raw = (env if env is not None else os.environ).get(name)
+    if not raw or not raw.strip():
+        return default
+    value = os.path.expanduser(raw.strip())
+    if not os.path.isabs(value):
+        value = os.path.join(REPO_ROOT, value)
+    return os.path.normpath(value)
+
+
 class Config:
     """Server configuration resolved once at start-up."""
 
@@ -35,13 +52,13 @@ class Config:
         self.host = env.get("HOST", "127.0.0.1")
         self.port = _env_int("PORT", 8000, env)
         self.repo_root = REPO_ROOT
-        self.db_path = env.get("DB_PATH") or os.path.join(HERE, "invigismart.db")
+        self.db_path = _env_path("DB_PATH", os.path.join(HERE, "invigismart.db"), env)
 
         # --- uploaded documents (the per-account PDF library) -----------------
         # Metadata lives in SQLite; the PDFs themselves live in this directory,
         # outside the static web root. Production should point DOCUMENTS_DIR at a
         # persistent volume beside the database.
-        self.documents_dir = env.get("DOCUMENTS_DIR") or os.path.join(HERE, "uploads")
+        self.documents_dir = _env_path("DOCUMENTS_DIR", os.path.join(HERE, "uploads"), env)
         self.max_document_bytes = max(
             1024, _env_int("MAX_DOCUMENT_BYTES", 10 * 1024 * 1024, env)
         )

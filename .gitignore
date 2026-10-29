@@ -9,6 +9,9 @@ server/*.db-shm
 server/uploads/
 # Generated staff-timetable backups contain personal data; keep them local.
 invigismart-backup-*.json
+# Runtime data of the Passenger/cPanel layout (DEPLOY.md 13): the SQLite
+# database and uploaded school PDFs, created beside the application root.
+data/
 .env
 .env.production
 .env.local
