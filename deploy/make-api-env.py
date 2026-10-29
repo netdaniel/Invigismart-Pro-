@@ -4,8 +4,10 @@
 The live backend needs a handful of settings that are *not* the ones in the
 developer's ``.env``:
 
-* ``APP_BASE_URL`` must be the public https origin, because that is what turns
-  on the production checks and what PayFast records as the ``notify_url``;
+* ``APP_BASE_URL`` must be the public https origin of the *dashboard*, because
+  that is what turns on the production checks, where PayFast sends the buyer
+  back (the session token lives on that origin, so a different host loses it)
+  and what PayFast records as the ``notify_url``;
 * ``JWT_SECRET`` must be new, so a token minted on a laptop is not accepted on
   the live site;
 * ``DB_PATH`` stays relative, so ``server/config.py`` resolves it beside the
@@ -38,7 +40,14 @@ REPO_ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 DEFAULT_SOURCE = os.path.join(REPO_ROOT, ".env")
 DEFAULT_OUT = os.path.join(HERE, "invigismart-api.env")
 
-API_ORIGIN = "https://api.invigismart.online"
+# The website's origin, not the API's. PayFast sends the buyer back to
+# ``<this>/app?checkout=success``, and the dashboard reads its bearer token from
+# localStorage on the origin that served it - returning to api.invigismart.online
+# instead would land the buyer on a dashboard with no session. The ITN goes to
+# ``<this>/api/billing/webhook``, which the main domain already routes to this
+# same Passenger app (public_html/api), so the notification needs no certificate
+# of its own either.
+API_ORIGIN = "https://invigismart.online"
 SECRET_MARKERS = ("SECRET", "PASS", "KEY")
 
 

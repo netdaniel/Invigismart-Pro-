@@ -2428,7 +2428,7 @@ class ApiEnvTemplateTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-        self.assertEqual("https://api.invigismart.online", env["APP_BASE_URL"])
+        self.assertEqual("https://invigismart.online", env["APP_BASE_URL"])
         # Relative, so it resolves beside the app root, not in Passenger's CWD.
         self.assertEqual("data/invigismart.db", env["DB_PATH"])
         self.assertEqual("0", env["ALLOW_MOCK_BILLING"])

@@ -995,16 +995,19 @@ python3 deploy/make-api-env.py     # -> deploy/invigismart-api.env (gitignored)
 
 It copies the PayFast values from your `.env`, mints a **fresh `JWT_SECRET`**
 (dev tokens must not be valid on the live site), pins
-`APP_BASE_URL=https://api.invigismart.online`, keeps `PAYFAST_SANDBOX=1` and
-`ALLOW_MOCK_BILLING=0`, and leaves `DB_PATH` relative so the database lands in
-`<app root>/data/`. Then File Manager → **Upload** that file → **Rename** it to
-`.env` → delete the local copy. It refuses to overwrite an existing file unless
-you pass `--force`, because a new secret signs every school out.
+`APP_BASE_URL=https://invigismart.online` (the *website's* origin, not the API's
+hostname: PayFast returns the buyer to `<origin>/app?checkout=success`, and the
+dashboard only finds its session token on the origin that served it), keeps
+`PAYFAST_SANDBOX=1` and `ALLOW_MOCK_BILLING=0`, and leaves `DB_PATH` relative so
+the database lands in `<app root>/data/`. Then File Manager → **Upload** that
+file → **Rename** it to `.env` → delete the local copy. It refuses to overwrite
+an existing file unless you pass `--force`, because a new secret signs every
+school out.
 
 Doing it by hand works too: `+ File`, named `.env`, then **Edit**, copying
 `.env.passenger.example` and filling in `JWT_SECRET`
 (`python3 -c "import secrets; print(secrets.token_hex(32))"`),
-`APP_BASE_URL=https://api.invigismart.online` and the three PayFast values. Keep
+`APP_BASE_URL=https://invigismart.online` and the three PayFast values. Keep
 `PAYFAST_SANDBOX=1` until a sandbox purchase works.
 
 Upload **`passenger_wsgi.py` last**, after cPanel has generated its own copy, so
@@ -1015,7 +1018,11 @@ Passenger caches the code and will keep serving the old version otherwise.
 
 ```bash
 curl -s https://api.invigismart.online/api/health | python3 -m json.tool
+curl -s https://invigismart.online/api/health    | python3 -m json.tool   # same app
 ```
+
+Both hostnames reach the same Passenger app; the second is the one the
+dashboard actually calls, so it is the one that matters.
 
 * `"publicHost": true` and `"ephemeralJwtSecret": false` - the env file was read.
 * `"billingConfigured": true`, `"mockBilling": false`.
@@ -1063,8 +1070,9 @@ warm during the working day:
 * **Migrating later is easy, in this direction only.** Moving to a VPS (§1–§5)
   means copying the app root, setting `APP_BASE_URL` and moving DNS - the code
   path is identical. Moving the other way, from a VPS to cPanel, is the same.
-  But every stored `notify_url` is tied to the hostname, so keep
-  `api.invigismart.online` as the public name and change what sits behind it.
+  But every checkout stores the `notify_url` it was created with, so keep the
+  hostname in `APP_BASE_URL` (here `invigismart.online`, which is also where the
+  dashboard's session lives) and change what sits behind it.
 
 Next practical steps, in order: add the password-reset flow, then `robots.txt` +
 `sitemap.xml` for the domain you just deployed, then a smoke test in your
