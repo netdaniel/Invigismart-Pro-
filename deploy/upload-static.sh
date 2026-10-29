@@ -75,6 +75,9 @@ SITE_FILES=(
   privacy.html
   terms.html
   .htaccess
+  # Where the pages find the API. ships even when blank: without the file the
+  # pages fall back to same-origin, which on this host has no backend.
+  api-base.js
   assets/logo.svg
   assets/logo-mark.svg
   assets/timetable-import.js

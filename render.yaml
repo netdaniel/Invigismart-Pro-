@@ -1,0 +1,94 @@
+# Render Blueprint for the Invigismart Pro backend.
+#
+#   Render dashboard -> New + -> Blueprint -> pick this repo -> Apply.
+#
+# Render then builds ./Dockerfile, mounts the disk below at /data, and asks for
+# every value marked `sync: false` (those are the secrets, which must never sit
+# in git). Values marked `generateValue: true` are created once by Render.
+#
+# Two things about the plan choice:
+#   * `starter` is the cheapest plan that allows a persistent disk. On the free
+#     plan there is no disk, so the SQLite database resets on every deploy and
+#     every sleep - paid licences would vanish. Do not run a paywall on free.
+#   * Render sleeps a free instance after 15 minutes idle; the first request
+#     then waits ~30s. PayFast's ITN is an unattended POST, so a sleeping
+#     instance means a payment notification that is retried (PayFast does retry)
+#     rather than applied immediately.
+#
+# Frankfurt is the closest Render region to South Africa (~180ms from Cape Town).
+services:
+  - type: web
+    name: invigismart-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: invigismart-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # --- shape of the process ---------------------------------------------
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8080
+      # Database and uploaded PDFs, on the disk above (never in the image).
+      - key: DB_PATH
+        value: /data/invigismart.db
+      - key: DOCUMENTS_DIR
+        value: /data/documents
+
+      # --- public URL --------------------------------------------------------
+      # The address customers and PayFast's ITN reach. For the first deploy use
+      # the onrender.com hostname Render assigns; after adding the custom domain
+      # (api.invigismart.online) change it here and redeploy, because it builds
+      # the return/cancel URLs and the recorded notify_url.
+      - key: APP_BASE_URL
+        sync: false
+
+      # --- sessions ----------------------------------------------------------
+      # Generated once by Render. Rotating it signs every school out.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # --- billing -----------------------------------------------------------
+      - key: BILLING_PROVIDER
+        value: payfast
+      - key: PAYFAST_MERCHANT_ID
+        sync: false
+      - key: PAYFAST_MERCHANT_KEY
+        sync: false
+      # Must match PayFast -> Settings -> Integration exactly, or every checkout
+      # signature is rejected. Leave unset only if the account has no passphrase,
+      # in which case also set PAYFAST_ALLOW_NO_PASSPHRASE=1.
+      - key: PAYFAST_PASSPHRASE
+        sync: false
+      # Real money once this is 0. Keep 1 until a full sandbox purchase works.
+      - key: PAYFAST_SANDBOX
+        value: "1"
+      - key: PAYFAST_FREQUENCY
+        value: "6"
+      - key: PAYFAST_CYCLES
+        value: "0"
+      - key: PAYFAST_ITN_VERIFICATION
+        value: api
+      # Mock billing mints free licences; it is force-disabled on https anyway.
+      - key: ALLOW_MOCK_BILLING
+        value: "0"
+
+      # --- plan copy / support ----------------------------------------------
+      - key: PLAN_NAME
+        value: Annual School Unlimited
+      - key: PLAN_PRICE_DISPLAY
+        value: R1200 / year
+      - key: PLAN_PRICE_AMOUNT
+        value: "1200.00"
+      - key: SUBSCRIPTION_DAYS
+        value: "365"
+      - key: SUPPORT_EMAIL
+        value: daniel@invigismart.online
+      - key: SUPPORT_PHONE
+        value: "+27 76 319 3749"

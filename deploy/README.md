@@ -26,8 +26,13 @@ cp deploy/.deploy.env.example .deploy.env   # fill in cPanel/FTP user + password
 
 `.deploy.env` is gitignored. The script uploads only the files the website is
 made of (`index.html`, `landing.html`, `privacy.html`, `terms.html`, `.htaccess`,
-`assets/*`). `server/`, `.env`, `*.db`, `server/uploads/` and timetable backups
-are never touched, and nothing is deleted on the server.
+`api-base.js`, `assets/*`). `server/`, `.env`, `*.db`, `server/uploads/` and
+timetable backups are never touched, and nothing is deleted on the server.
+
+`api-base.js` is what points the pages at the backend (`window.INVIGISMART_API`).
+Blank means same-origin, which is right when the Python server serves the pages
+itself; set it to the API's origin when the pages live here and the backend runs
+elsewhere. See `DEPLOY.md` §12.
 
 `.htaccess` is not optional: the pages link to `/terms` and `/privacy`
 (extensionless, the way the Flask app serves them), and on a static host those

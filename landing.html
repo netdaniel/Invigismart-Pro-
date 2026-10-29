@@ -1085,11 +1085,14 @@
     </div>
   </div>
 
+  <!-- Sets window.INVIGISMART_API. Blank = same origin; see api-base.js. -->
+  <script src="/api-base.js"></script>
   <script>
     /* =========================================================
        API CLIENT
-       The backend serves this page, so /api/* is same-origin. Set
-       window.INVIGISMART_API to point at a remote deployment.
+       The backend serves this page, so /api/* is same-origin.
+       Cross-origin deployments are configured in /api-base.js,
+       which sets window.INVIGISMART_API before this runs.
        ========================================================= */
     var TOKEN_KEY = 'invigismart_token_v1';
     var API_BASE = (typeof window !== 'undefined' && window.INVIGISMART_API) || '';

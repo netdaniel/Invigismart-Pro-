@@ -1,0 +1,26 @@
+# Keep local state and secrets out of the image (and out of the build context).
+.git/
+.gitignore
+.vscode/
+deploy/
+
+# Never in an image: credentials, the live SQLite database, school PDFs.
+.env
+.env.*
+!.env.example
+!.env.production.example
+.deploy.env
+server/*.db
+server/*.db-journal
+server/*.db-wal
+server/*.db-shm
+server/uploads/
+invigismart-backup-*.json
+
+# Not needed to run the server.
+server/tests/
+**/__pycache__/
+*.pyc
+server.log
+DEPLOY.md
+README.md
