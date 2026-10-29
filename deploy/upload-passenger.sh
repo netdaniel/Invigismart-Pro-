@@ -83,11 +83,13 @@ BACKEND_FILES=(
   assets/logo.svg
   assets/logo-mark.svg
   assets/timetable-import.js
+  assets/exam-types.js
   server/app.py
   server/config.py
   server/db.py
   server/billing.py
   server/documents.py
+  server/examtypes.py
   server/payfast.py
   server/roster.py
   server/security.py

@@ -59,6 +59,24 @@
     @media print {
       header, nav, footer, .no-print { display: none !important; }
     }
+    /* The master roster is a document, not a screen: it is assembled into this
+       block and the dashboard is hidden for the duration of the print job. */
+    #printMasterRoster { display: none; }
+    @media print {
+      body.printing-master > * { display: none !important; }
+      body.printing-master #printMasterRoster { display: block !important; }
+      #printMasterRoster { font-size: 10pt; color: #000; }
+      #printMasterRoster h1 { font-size: 16pt; margin: 0 0 2pt; }
+      #printMasterRoster .meta { font-size: 9pt; margin: 0 0 2pt; }
+      #printMasterRoster table { width: 100%; border-collapse: collapse; margin-top: 8pt; }
+      #printMasterRoster th, #printMasterRoster td {
+        border: 1px solid #333; padding: 3pt 5pt; text-align: left; vertical-align: top;
+      }
+      #printMasterRoster thead { display: table-header-group; }
+      #printMasterRoster tr { page-break-inside: avoid; }
+      #printMasterRoster .signoff { margin-top: 20pt; display: flex; gap: 24pt; }
+      #printMasterRoster .signoff div { flex: 1; border-top: 1px solid #333; padding-top: 3pt; font-size: 9pt; }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
@@ -298,7 +316,7 @@
         <h3 class="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
           <i data-lucide="sliders" class="w-5 h-5 text-indigo-600"></i> Active Constraints & Rules
         </h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
             <div class="font-semibold text-xs text-indigo-600 uppercase tracking-wider mb-1">Rule 1</div>
             <div class="font-bold text-sm text-slate-800">1:30 Invigilator Ratio</div>
@@ -311,8 +329,13 @@
           </div>
           <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
             <div class="font-semibold text-xs text-indigo-600 uppercase tracking-wider mb-1">Rule 3</div>
-            <div class="font-bold text-sm text-slate-800">Teaching Schedule Sync</div>
-            <p class="text-xs text-slate-500 mt-1">Teachers with regular active classes during exams are excluded during busy slots.</p>
+            <div class="font-bold text-sm text-slate-800">Teaching Timetable Sync</div>
+            <p class="text-xs text-slate-500 mt-1">Teachers with a class at that slot are excluded. Always applied to the Gr 12 prelim and final sittings.</p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+            <div class="font-semibold text-xs text-indigo-600 uppercase tracking-wider mb-1">Rule 4</div>
+            <div class="font-bold text-sm text-slate-800">One Exam Type Per Roster</div>
+            <p class="text-xs text-slate-500 mt-1">Term 2 (all teachers available), Gr 12 prelim, Gr 12 final, or Term 4 Gr 8–11. The type fixes the grades and the timetable rule.</p>
           </div>
         </div>
       </div>
@@ -474,8 +497,11 @@
 
       <!-- Add Exam Form -->
       <form onsubmit="addExam(event)" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <h3 class="text-sm font-bold text-slate-800">Add Exam Session</h3>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 class="text-sm font-bold text-slate-800">Add a paper to the exam timetable</h3>
+          <p class="text-xs text-slate-500">The grade is a separate field now, so a Grade 12 prelim cannot pick up a Grade 10 paper by accident.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Date</label>
             <input type="date" id="examDate" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
@@ -491,8 +517,16 @@
             <input type="text" id="examPeriod" required placeholder="e.g., P2" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Subject (with grade)</label>
-            <input type="text" id="examSubject" required placeholder="e.g., Mathematics Gr12" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Grade</label>
+            <select id="examGrade" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option value="">Grade…</option>
+              <option value="8">8</option><option value="9">9</option><option value="10">10</option>
+              <option value="11">11</option><option value="12">12</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Subject</label>
+            <input type="text" id="examSubject" required placeholder="e.g., Mathematics" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Number of Students</label>
@@ -504,6 +538,91 @@
         </button>
       </form>
 
+      <!-- Paper list: subject + grade + students, before the slots are known -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold text-slate-800">Paper list &mdash; subject, grade and number of students</h3>
+            <p class="text-xs text-slate-500 mt-1">Upload the list your exams office works from (CSV: <code>subject,grade,students</code>), then drop each paper into a slot. The 1:30 ratio is worked out per paper.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition flex items-center gap-1.5">
+              <i data-lucide="file-up" class="w-4 h-4"></i> Upload paper list
+              <input type="file" accept=".csv,text/csv" onchange="uploadPapersCSV(event)" class="hidden">
+            </label>
+            <button type="button" onclick="exportPapersCSV()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+              <i data-lucide="file-down" class="w-4 h-4"></i> Export papers
+            </button>
+          </div>
+        </div>
+
+        <form onsubmit="addPaper(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Subject</label>
+            <input type="text" id="paperSubject" required placeholder="e.g., Mathematical Literacy" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Grade</label>
+            <select id="paperGrade" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option value="">Grade…</option>
+              <option value="8">8</option><option value="9">9</option><option value="10">10</option>
+              <option value="11">11</option><option value="12">12</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Number of Students</label>
+            <input type="number" id="paperStudents" min="1" required placeholder="e.g., 64" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div class="flex items-end">
+            <button type="submit" class="w-full px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5">
+              <i data-lucide="plus" class="w-4 h-4"></i> Add paper
+            </button>
+          </div>
+        </form>
+
+        <div id="papersMsg" class="text-xs"></div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 text-slate-600 text-[11px] font-bold border-b border-slate-200">
+                <th class="py-2.5 px-3">Subject</th>
+                <th class="py-2.5 px-3">Gr</th>
+                <th class="py-2.5 px-3">Students</th>
+                <th class="py-2.5 px-3">Invig. (1:30)</th>
+                <th class="py-2.5 px-3">Slot</th>
+                <th class="py-2.5 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="papersTableBody" class="divide-y divide-slate-100 text-xs text-slate-700"></tbody>
+          </table>
+        </div>
+
+        <div id="paperSchedulePanel" class="hidden rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 space-y-3">
+          <div class="text-xs font-semibold text-indigo-900" id="paperScheduleTitle">Schedule paper</div>
+          <form onsubmit="schedulePaper(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Date</label>
+              <input type="date" id="paperDate" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Day of Week</label>
+              <select id="paperDay" required class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Period</label>
+              <input type="text" id="paperPeriod" required placeholder="e.g., P1" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div class="flex items-end gap-2">
+              <button type="submit" class="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition">Add to timetable</button>
+              <button type="button" onclick="cancelPaperSchedule()" class="px-3 py-2 bg-white border border-slate-300 text-slate-600 text-xs font-semibold rounded-xl transition">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Exams Table -->
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <table class="w-full text-left border-collapse">
@@ -512,6 +631,7 @@
               <th class="py-3 px-4">Date</th>
               <th class="py-3 px-4">Day</th>
               <th class="py-3 px-4">Period</th>
+              <th class="py-3 px-4">Gr</th>
               <th class="py-3 px-4">Subject</th>
               <th class="py-3 px-4">Students</th>
               <th class="py-3 px-4">Invigilators Needed (1:30)</th>
@@ -525,11 +645,38 @@
 
     <!-- 5. ROSTER GENERATOR TAB -->
     <div id="content-generator" class="tab-content hidden space-y-6">
+      <!-- Step 1: the sitting. Rules come from assets/exam-types.js. -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">1. Choose the exam type</h2>
+            <p class="text-xs text-slate-500 mt-1">Every roster is generated for exactly one sitting. The exam type fixes which grades may appear on the roster and whether the teaching timetable is respected.</p>
+          </div>
+          <div class="w-full sm:w-80">
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="examTypeSelect">Exam type</label>
+            <select id="examTypeSelect" onchange="onExamTypeChange()" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option value="">Select exam type…</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="examTypeRules" class="hidden rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-xs text-slate-700 space-y-2"></div>
+
+        <label class="flex items-start gap-2.5 rounded-xl border border-slate-200 p-3 cursor-pointer">
+          <input type="checkbox" id="considerTimetable" onchange="onTimetableToggle()" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+          <span class="text-xs text-slate-700">
+            <span class="font-semibold text-slate-800">Consider the teacher timetable for availability</span>
+            <span id="timetableHint" class="block text-slate-500 mt-0.5">A teacher who is in front of a class at that slot is not available to invigilate.</span>
+          </span>
+        </label>
+      </div>
+
+      <!-- Step 2: generate -->
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-        <h2 class="text-lg font-bold text-slate-900">Automatic Roster Generator</h2>
-        <p class="text-xs text-slate-500 mt-1">Runs the constraint solver: enforces the 1:30 ratio, excludes teachers from their own subjects, skips busy teaching slots, and balances total invigilation load fairly.</p>
+        <h2 class="text-lg font-bold text-slate-900">2. Generate the roster</h2>
+        <p class="text-xs text-slate-500 mt-1">Runs the constraint solver: enforces the 1:30 ratio, excludes teachers from their own subjects, skips busy teaching slots for the sittings that require it, and balances total invigilation load fairly.</p>
         <div class="mt-4 flex flex-wrap items-center gap-3">
-          <button onclick="generateRoster()" id="btnGenerate" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition flex items-center gap-2">
+          <button onclick="generateRoster()" id="btnGenerate" disabled class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl shadow transition flex items-center gap-2">
             <i data-lucide="zap" class="w-4 h-4"></i> Generate Balanced Roster
           </button>
           <button onclick="clearRoster()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
@@ -537,6 +684,9 @@
           </button>
           <button onclick="exportRosterCSV()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
             <i data-lucide="file-down" class="w-4 h-4"></i> Export Roster CSV
+          </button>
+          <button onclick="printMasterRoster()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i data-lucide="printer" class="w-4 h-4"></i> Print Master Roster
           </button>
           <span id="generatorMsg" class="text-xs font-medium"></span>
         </div>
@@ -683,6 +833,32 @@
     </div>
   </main>
 
+  <!-- Master roster print surface. Hidden on screen; printMasterRoster() fills
+       it and the @media print rule swaps it in for the dashboard. -->
+  <div id="printMasterRoster">
+    <div id="printMasterHeader"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Day</th>
+          <th>Period</th>
+          <th>Gr</th>
+          <th>Subject</th>
+          <th>Students</th>
+          <th>Invig.</th>
+          <th>Invigilators</th>
+        </tr>
+      </thead>
+      <tbody id="printMasterBody"></tbody>
+    </table>
+    <div class="signoff">
+      <div>Prepared by (exams office)</div>
+      <div>Checked by (principal / deputy)</div>
+      <div>Date</div>
+    </div>
+  </div>
+
   <!-- FOOTER -->
   <footer class="bg-slate-900 text-slate-400 border-t border-slate-800 mt-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px]">
@@ -706,6 +882,9 @@
   <script src="/api-base.js"></script>
   <!-- Pure timetable-grid parser: no DOM, no storage, testable on its own -->
   <script src="/assets/timetable-import.js"></script>
+  <!-- The exam-type catalogue: which grades each sitting covers and whether it
+       respects the teaching timetable. Mirrors server/examtypes.py. -->
+  <script src="/assets/exam-types.js"></script>
   <script>
   /* =========================================================
      STATE & PERSISTENCE
@@ -717,8 +896,11 @@
     licenseExpiry: null,        // ISO string
     teachers: [],               // { id, name, subjects: [..] }
     schedules: [],              // { id, teacherId, day, period, klass }
-    exams: [],                  // { id, date, day, period, subject, students }
-    roster: null                // { assignments: [{examId, teacherIds}], generatedAt }
+    exams: [],                  // { id, date, day, period, grade, subject, students }
+    papers: [],                 // { id, subject, grade, students, sessionId }
+    examType: null,             // one of InvigismartExamTypes.LIST ids
+    considerTimetable: false,   // resolved from the exam type, then the school's choice
+    roster: null                // { assignments, examType, considerTimetable, warnings, generatedAt }
   };
 
   function saveState() {
@@ -729,6 +911,10 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) state = Object.assign(state, JSON.parse(raw));
     } catch (e) {}
+    // A workspace saved by an older build has no paper list and no sitting.
+    if (!Array.isArray(state.papers)) state.papers = [];
+    if (!Array.isArray(state.exams)) state.exams = [];
+    if (!state.examType) state.examType = null;
   }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1153,6 +1339,115 @@
   }
 
   /* =========================================================
+     EXAM TYPES
+     The catalogue lives in /assets/exam-types.js and mirrors
+     server/examtypes.py. No roster is generated without one: the sitting
+     decides which grades may appear and whether teaching is respected.
+     ========================================================= */
+  const EXAM_CATALOGUE = (window.InvigismartExamTypes && InvigismartExamTypes.LIST) || [];
+
+  function examSpec() {
+    if (!state.examType) return null;
+    if (window.InvigismartExamTypes) return InvigismartExamTypes.byId(state.examType);
+    return EXAM_CATALOGUE.find(t => t.id === state.examType) || null;
+  }
+
+  function timetableRequired(spec) {
+    return !!spec && spec.timetablePolicy === 'required';
+  }
+
+  /* The grade a paper belongs to: the explicit field first, then "Gr12" in the
+     subject label, so sessions saved before grades existed still resolve. */
+  function examGrade(exam) {
+    if (!exam) return null;
+    if (window.InvigismartExamTypes) {
+      return InvigismartExamTypes.parseGrade(exam.grade) ||
+             InvigismartExamTypes.parseGrade(exam.subject);
+    }
+    return null;
+  }
+
+  function gradesText(grades) {
+    if (window.InvigismartExamTypes) return InvigismartExamTypes.gradesText(grades);
+    return '';
+  }
+
+  function populateExamTypeSelect() {
+    const sel = document.getElementById('examTypeSelect');
+    if (!sel) return;
+    if (!EXAM_CATALOGUE.length || !window.InvigismartExamTypes) {
+      // /assets/exam-types.js did not load: say so instead of offering a
+      // picker whose rules would silently not be applied.
+      sel.innerHTML = '<option value="">Exam type catalogue unavailable — reload the page</option>';
+      return;
+    }
+    const current = state.examType || '';
+    sel.innerHTML = '<option value="">Select exam type…</option>' + EXAM_CATALOGUE.map(t =>
+      `<option value="${esc(t.id)}">${esc(t.label)}</option>`).join('');
+    sel.value = EXAM_CATALOGUE.some(t => t.id === current) ? current : '';
+    renderExamTypePanel();
+  }
+
+  function onExamTypeChange() {
+    if (!window.InvigismartExamTypes) return;
+    const spec = InvigismartExamTypes.byId(document.getElementById('examTypeSelect').value);
+    state.examType = spec ? spec.id : null;
+    // Picking a sitting resets the toggle to that sitting's default: Term 2 is
+    // "all teachers available", the Grade 12 sittings are locked on.
+    state.considerTimetable = spec ? InvigismartExamTypes.resolveTimetable(spec, null) : false;
+    saveState();
+    renderExamTypePanel();
+  }
+
+  function onTimetableToggle() {
+    const spec = examSpec();
+    const box = document.getElementById('considerTimetable');
+    if (!spec) { box.checked = false; state.considerTimetable = false; saveState(); return; }
+    // The Grade 12 sittings cannot be talked out of it.
+    state.considerTimetable = timetableRequired(spec) ? true : box.checked;
+    saveState();
+    renderExamTypePanel();
+  }
+
+  function renderExamTypePanel() {
+    const panel = document.getElementById('examTypeRules');
+    const box = document.getElementById('considerTimetable');
+    const hint = document.getElementById('timetableHint');
+    const btn = document.getElementById('btnGenerate');
+    if (!panel || !box || !hint || !btn) return;
+
+    const spec = examSpec();
+    if (!spec) {
+      panel.classList.add('hidden');
+      panel.innerHTML = '';
+      state.considerTimetable = false;
+      box.checked = false;
+      box.disabled = true;
+      hint.textContent = 'Pick an exam type first — the sitting decides whether the teaching timetable is respected.';
+      btn.disabled = true;
+      return;
+    }
+
+    const locked = timetableRequired(spec);
+    state.considerTimetable = locked ? true : !!state.considerTimetable;
+    box.checked = state.considerTimetable;
+    box.disabled = locked;
+    hint.textContent = spec.timetableNote;
+    btn.disabled = false;
+
+    panel.classList.remove('hidden');
+    panel.innerHTML = `
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider">${esc(spec.shortLabel)}</span>
+        <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-800 text-[10px] font-bold">${esc(gradesText(spec.grades))}</span>
+        <span class="px-2 py-0.5 rounded-full bg-white border ${locked ? 'border-amber-300 text-amber-800' : 'border-slate-200 text-slate-600'} text-[10px] font-bold">Teaching timetable: ${locked ? 'required' : (state.considerTimetable ? 'considered' : 'not considered')}</span>
+      </div>
+      <p class="text-slate-600">${esc(spec.summary)}</p>
+      <p class="text-[11px] text-slate-500">Rules: 1:30 ratio &bull; no own-subject invigilation &bull; ${state.considerTimetable ? 'teachers in a lesson at that slot are excluded' : 'every teacher is available, including those timetabled at that slot'}.</p>`;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  /* =========================================================
      EXAMS
      ========================================================= */
   const invigCount = students => Math.max(1, Math.ceil(students / 30));
@@ -1165,6 +1460,7 @@
       date: document.getElementById('examDate').value,
       day: document.getElementById('examDay').value,
       period: document.getElementById('examPeriod').value.trim(),
+      grade: parseInt(document.getElementById('examGrade').value, 10) || null,
       subject: document.getElementById('examSubject').value.trim(),
       students: parseInt(document.getElementById('examStudents').value, 10) || 1
     });
@@ -1175,6 +1471,8 @@
   function deleteExam(id) {
     if (!checkPaywall()) return;
     state.exams = state.exams.filter(x => x.id !== id);
+    // A paper that pointed at this session is back to "needs a slot".
+    state.papers.forEach(p => { if (p.sessionId === id) p.sessionId = null; });
     if (state.roster) state.roster.assignments = state.roster.assignments.filter(a => a.examId !== id);
     saveState(); refreshAll();
   }
@@ -1182,21 +1480,40 @@
   function renderExams() {
     const tbody = document.getElementById('examsTableBody');
     if (!state.exams.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="py-6 px-4 text-center text-slate-400">No exam sessions registered.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="py-6 px-4 text-center text-slate-400">No exam sessions registered.</td></tr>';
       return;
     }
-    tbody.innerHTML = state.exams.map(x => `
+    tbody.innerHTML = state.exams.map(x => {
+      const grade = examGrade(x);
+      return `
       <tr>
         <td class="py-3 px-4">${esc(x.date)}</td>
         <td class="py-3 px-4">${esc(x.day)}</td>
         <td class="py-3 px-4">${esc(x.period)}</td>
+        <td class="py-3 px-4">${grade ? 'Gr ' + grade : '—'}</td>
         <td class="py-3 px-4 font-semibold text-slate-800">${esc(x.subject)}</td>
         <td class="py-3 px-4">${x.students}</td>
         <td class="py-3 px-4"><span class="inline-block px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold border border-purple-100">${invigCount(x.students)}</span></td>
         <td class="py-3 px-4 text-right">
           <button onclick="deleteExam('${x.id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
+  }
+
+  /* A paper list has three or four columns and a grade in the second one; an
+     exam timetable starts with a date. Detect it so a list dropped on either
+     upload button still lands in the right table. */
+  function looksLikePaperList(rows) {
+    const first = rows.find(r => r.some(c => c !== ''));
+    if (!first) return false;
+    const header = first.map(c => c.toLowerCase().trim());
+    // A paper list starts with Subject; an exam timetable starts with Date.
+    // Both contain "grade" and "students", so the first cell has to decide.
+    if (header[0] === 'subject' && header.indexOf('grade') !== -1 &&
+        header.indexOf('students') !== -1) return true;
+    return first.length >= 3 && first.length <= 4 &&
+           !!InvigismartExamTypes.parseGrade(first[1]);
   }
 
   function uploadExamsCSV(e) {
@@ -1205,10 +1522,23 @@
     const reader = new FileReader();
     reader.onload = () => {
       const rows = csvToRows(reader.result);
+      if (looksLikePaperList(rows)) {
+        importPaperRows(rows);
+        e.target.value = '';
+        return;
+      }
       rows.forEach((row, i) => {
-        if (i === 0 && /date/i.test(row[0])) return;
-        if (row.length >= 5 && row[0]) {
-          state.exams.push({ id: uid(), date: row[0], day: row[1], period: row[2], subject: row[3], students: parseInt(row[4], 10) || 1 });
+        if (i === 0 && /^date/i.test(row[0])) return;
+        if (row.length >= 6) {
+          // Date,Day,Period,Grade,Subject,Students - the format we export
+          state.exams.push({ id: uid(), date: row[0], day: row[1], period: row[2],
+            grade: InvigismartExamTypes.parseGrade(row[3]), subject: row[4],
+            students: parseInt(row[5], 10) || 1 });
+        } else if (row.length >= 5 && row[0]) {
+          // Older five-column files: Date,Day,Period,Subject,Students
+          state.exams.push({ id: uid(), date: row[0], day: row[1], period: row[2],
+            grade: InvigismartExamTypes.parseGrade(row[3]), subject: row[3],
+            students: parseInt(row[4], 10) || 1 });
         }
       });
       saveState(); refreshAll();
@@ -1218,39 +1548,250 @@
   }
 
   function exportExamsCSV() {
-    const rows = ['Date,Day,Period,Subject,Students,InvigilatorsNeeded'];
-    state.exams.forEach(x => rows.push([x.date, x.day, x.period, '"' + x.subject + '"', x.students, invigCount(x.students)].join(',')));
+    const rows = ['Date,Day,Period,Grade,Subject,Students,InvigilatorsNeeded'];
+    state.exams.forEach(x => rows.push([x.date, x.day, x.period, examGrade(x) || '',
+      '"' + x.subject.replace(/"/g, '""') + '"', x.students, invigCount(x.students)].join(',')));
     download('exam_timetable.csv', rows.join('\n'), 'text/csv');
   }
 
   /* =========================================================
-     ROSTER GENERATION (constraint solver)
-     Rules: 1:30 ratio | no own-subject invigilation | exclude busy
-     teaching slots | balance load | no double-booking per slot
+     PAPERS (subject, grade and number of students)
+     The exams office usually knows the paper totals before the timetable is
+     final, so papers live in their own list and are dropped into slots.
      ========================================================= */
-  function generateRoster() {
+  let pendingPaperId = null;
+
+  function paperMessage(text, tone) {
+    const el = document.getElementById('papersMsg');
+    if (el) el.innerHTML = text ? `<span class="text-${tone || 'slate'}-600">${esc(text)}</span>` : '';
+  }
+
+  function paperSession(paper) {
+    if (!paper.sessionId) return null;
+    return state.exams.find(x => x.id === paper.sessionId) || null;
+  }
+
+  function addPaper(e) {
+    e.preventDefault();
     if (!checkPaywall()) return;
-    if (!state.teachers.length || !state.exams.length) {
-      document.getElementById('generatorMsg').innerHTML = '<span class="text-red-600">Need at least one teacher and one exam session.</span>';
+    const subject = document.getElementById('paperSubject').value.trim();
+    const grade = InvigismartExamTypes.parseGrade(document.getElementById('paperGrade').value);
+    const students = parseInt(document.getElementById('paperStudents').value, 10) || 0;
+    if (!subject || !grade || students <= 0) {
+      paperMessage('A paper needs a subject, a grade (8–12) and a student count.', 'red');
       return;
     }
+    state.papers.push({ id: uid(), subject: subject, grade: grade, students: students, sessionId: null });
+    document.getElementById('paperSubject').value = '';
+    document.getElementById('paperStudents').value = '';
+    paperMessage('');
+    saveState(); refreshAll();
+  }
+
+  function importPaperRows(rows) {
+    let added = 0, skipped = 0;
+    rows.forEach((row, i) => {
+      if (i === 0 && /subject|paper/i.test(row[0] || '')) return;
+      if (!row.some(c => c)) return;
+      const subject = (row[0] || '').trim();
+      const grade = InvigismartExamTypes.parseGrade(row[1]);
+      const students = parseInt(row[2], 10) || 0;
+      if (!subject || !grade || students <= 0) { skipped++; return; }
+      state.papers.push({ id: uid(), subject: subject, grade: grade, students: students, sessionId: null });
+      added++;
+    });
+    saveState(); refreshAll();
+    paperMessage(added + ' paper(s) imported' + (skipped
+      ? ' — ' + skipped + ' row(s) skipped (need a subject, a grade 8–12 and a student count).'
+      : '.'), skipped ? 'amber' : 'emerald');
+  }
+
+  function uploadPapersCSV(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { importPaperRows(csvToRows(reader.result)); e.target.value = ''; };
+    reader.readAsText(file);
+  }
+
+  function exportPapersCSV() {
+    const rows = ['Subject,Grade,Students,InvigilatorsNeeded,Date,Day,Period'];
+    state.papers.forEach(p => {
+      const session = paperSession(p);
+      rows.push(['"' + p.subject.replace(/"/g, '""') + '"', p.grade, p.students,
+        invigCount(p.students), session ? session.date : '', session ? session.day : '',
+        session ? session.period : ''].join(','));
+    });
+    download('paper_list.csv', rows.join('\n'), 'text/csv');
+  }
+
+  function renderPapers() {
+    const tbody = document.getElementById('papersTableBody');
+    if (!tbody) return;
+    if (!state.papers.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="py-6 px-3 text-center text-slate-400">No papers yet. Upload the exams office list or add one above.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.papers.map(p => {
+      const session = paperSession(p);
+      return `
+      <tr>
+        <td class="py-2.5 px-3 font-semibold text-slate-800">${esc(p.subject)}</td>
+        <td class="py-2.5 px-3">Gr ${esc(p.grade)}</td>
+        <td class="py-2.5 px-3">${esc(p.students)}</td>
+        <td class="py-2.5 px-3"><span class="inline-block px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold border border-purple-100">${invigCount(p.students)}</span></td>
+        <td class="py-2.5 px-3">${session
+          ? `<span class="font-medium text-slate-700">${esc(session.date)} • ${esc(session.day)} ${esc(session.period)}</span>`
+          : '<span class="inline-block px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-[10px] font-bold border border-amber-200">Needs a slot</span>'}</td>
+        <td class="py-2.5 px-3 text-right whitespace-nowrap">
+          ${session
+            ? `<button onclick="unschedulePaper('${p.id}')" class="px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Remove this paper from the timetable">Unschedule</button>`
+            : `<button onclick="startPaperSchedule('${p.id}')" class="px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Give this paper a date, day and period">Schedule</button>`}
+          <button onclick="deletePaper('${p.id}')" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function deletePaper(id) {
+    if (!checkPaywall()) return;
+    const paper = state.papers.find(p => p.id === id);
+    if (!paper) return;
+    // The paper and its timetable slot are the same paper: removing the paper
+    // removes the slot too, so the roster can never keep a ghost session.
+    if (paper.sessionId) {
+      const sessionId = paper.sessionId;
+      state.exams = state.exams.filter(x => x.id !== sessionId);
+      if (state.roster) state.roster.assignments = state.roster.assignments.filter(a => a.examId !== sessionId);
+    }
+    state.papers = state.papers.filter(p => p.id !== id);
+    if (pendingPaperId === id) cancelPaperSchedule();
+    saveState(); refreshAll();
+  }
+
+  function startPaperSchedule(id) {
+    const paper = state.papers.find(p => p.id === id);
+    if (!paper) return;
+    pendingPaperId = id;
+    document.getElementById('paperScheduleTitle').textContent =
+      'Schedule ' + paper.subject + ' (Gr ' + paper.grade + ', ' + paper.students + ' students)';
+    const panel = document.getElementById('paperSchedulePanel');
+    panel.classList.remove('hidden');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function cancelPaperSchedule() {
+    pendingPaperId = null;
+    const panel = document.getElementById('paperSchedulePanel');
+    if (panel) panel.classList.add('hidden');
+  }
+
+  function schedulePaper(e) {
+    e.preventDefault();
+    if (!checkPaywall()) return;
+    const paper = state.papers.find(p => p.id === pendingPaperId);
+    if (!paper) { cancelPaperSchedule(); return; }
+    const date = document.getElementById('paperDate').value;
+    const day = document.getElementById('paperDay').value;
+    const period = document.getElementById('paperPeriod').value.trim();
+    if (!date || !period) return;
+    const session = { id: uid(), date: date, day: day, period: period, grade: paper.grade,
+                      subject: paper.subject, students: paper.students };
+    state.exams.push(session);
+    paper.sessionId = session.id;
+    saveState(); refreshAll();
+    // Keep the slot and move to the next unscheduled paper: a paper list is
+    // entered slot by slot, not paper by paper.
+    const next = state.papers.find(p => !p.sessionId);
+    if (next) {
+      pendingPaperId = next.id;
+      document.getElementById('paperScheduleTitle').textContent =
+        'Schedule ' + next.subject + ' (Gr ' + next.grade + ', ' + next.students + ' students)';
+      paperMessage('Added. The date and day are kept for the next paper — change the period if it differs.', 'indigo');
+    } else {
+      cancelPaperSchedule();
+      paperMessage('Every paper is on the exam timetable.', 'emerald');
+    }
+  }
+
+  function unschedulePaper(id) {
+    if (!checkPaywall()) return;
+    const paper = state.papers.find(p => p.id === id);
+    if (!paper) return;
+    if (paper.sessionId) {
+      const sessionId = paper.sessionId;
+      state.exams = state.exams.filter(x => x.id !== sessionId);
+      if (state.roster) state.roster.assignments = state.roster.assignments.filter(a => a.examId !== sessionId);
+      paper.sessionId = null;
+    }
+    saveState(); refreshAll();
+    paperMessage('Removed from the timetable; the paper stays in the list and needs a new slot.', 'slate');
+  }
+
+
+  /* =========================================================
+     ROSTER GENERATION (constraint solver)
+     Rules: 1:30 ratio | no own-subject invigilation | the exam type's
+     timetable policy | balance load | no double-booking per slot
+     ========================================================= */
+  /* Subject labels are typed by humans: "Mathematics Gr12", "mathematics" and
+     "Maths" should not smuggle a teacher onto their own paper. The server owns
+     the full alias table; this is the best-effort mirror used for instant
+     redraws. */
+  function subjectKey(value) {
+    return String(value || '').toLowerCase()
+      .replace(/\b(?:grade|gr)\.?\s*\d+\b/g, ' ')
+      .replace(/[^a-z]+/g, ' ')
+      .trim();
+  }
+
+  function generateRoster() {
+    if (!checkPaywall()) return;
+    const msgEl = document.getElementById('generatorMsg');
+    const spec = examSpec();
+    if (!spec) {
+      msgEl.innerHTML = '<span class="text-red-600">Choose the exam type first — Term 2, Gr 12 prelim, Gr 12 final or Term 4.</span>';
+      return;
+    }
+    if (!state.teachers.length || !state.exams.length) {
+      msgEl.innerHTML = '<span class="text-red-600">Need at least one teacher and one exam session.</span>';
+      return;
+    }
+    // Grade scope: a Grade 12 prelim cannot quietly carry a Grade 10 paper.
+    const outOfScope = state.exams.filter(x => !InvigismartExamTypes.coversGrade(spec, x));
+    if (outOfScope.length) {
+      const listed = outOfScope.slice(0, 4).map(x => x.subject + ' (Gr ' + (examGrade(x) || '?') + ')').join('; ');
+      msgEl.innerHTML = '<span class="text-red-600">' + esc(spec.label) + ' only covers ' +
+        esc(gradesText(spec.grades)) + '. Remove or re-scope: ' + esc(listed) +
+        (outOfScope.length > 4 ? '; and ' + (outOfScope.length - 4) + ' more' : '') + '.</span>';
+      return;
+    }
+    const useTimetable = timetableRequired(spec) ? true : !!state.considerTimetable;
+
     const load = {};             // teacherId -> assigned count (balance)
     state.teachers.forEach(t => load[t.id] = 0);
     const booked = new Set();    // "day|period|teacherId" occupancy per exam slot
     const assignments = [];
     const warnings = [];
+    if (useTimetable && !state.schedules.length) {
+      // Not an error - the school may not have imported the timetable yet - but
+      // silence here would look like the timetable rule had been applied.
+      warnings.push('No teaching timetable is loaded: every teacher was treated as free, so the timetable rule could not exclude anyone.');
+    }
 
     const sortedExams = [...state.exams].sort((a, b) =>
       (a.day + a.period).localeCompare(b.day + b.period) || b.students - a.students);
 
     sortedExams.forEach(exam => {
       const needed = invigCount(exam.students);
+      const examSubject = subjectKey(exam.subject);
       const eligible = state.teachers.filter(t => {
-        if (booked.has(exam.day + '|' + exam.period + '|' + t.id)) return false;               // already invigilating this slot
-        if (t.subjects.some(s => s.toLowerCase() === exam.subject.toLowerCase())) return false; // Rule 2: own subject
-        const busy = state.schedules.some(sc => sc.teacherId === t.id && sc.day === exam.day &&
-          sc.period.toUpperCase() === exam.period.toUpperCase());                                // Rule 3: teaching slot
-        return !busy;
+        if (booked.has(exam.day + '|' + exam.period + '|' + t.id)) return false;          // already invigilating this slot
+        if (t.subjects.some(s => subjectKey(s) === examSubject)) return false;           // Rule 2: own subject
+        if (!useTimetable) return true;                                                   // Term 2: all teachers available
+        return !state.schedules.some(sc => sc.teacherId === t.id && sc.day === exam.day &&
+          sc.period.toUpperCase() === exam.period.toUpperCase());                         // Rule 3: teaching slot
       }).sort((a, b) => load[a.id] - load[b.id] || a.name.localeCompare(b.name));
 
       const chosen = eligible.slice(0, needed).map(t => t.id);
@@ -1261,12 +1802,22 @@
       assignments.push({ examId: exam.id, teacherIds: chosen });
     });
 
-    state.roster = { assignments, generatedAt: new Date().toISOString() };
+    // The sitting travels with the result, so the screen, the CSV and the
+    // printed master roster all state the rules the roster was built under.
+    state.roster = {
+      assignments: assignments,
+      warnings: warnings,
+      examType: spec.id,
+      examTypeLabel: spec.label,
+      gradeScope: spec.grades.slice(),
+      considerTimetable: useTimetable,
+      generatedAt: new Date().toISOString()
+    };
     saveState();
-    const msgEl = document.getElementById('generatorMsg');
     msgEl.innerHTML = warnings.length
-      ? '<span class="text-amber-600">Roster generated with ' + warnings.length + ' warning(s): ' + esc(warnings.join(' | ')) + '</span>'
-      : '<span class="text-emerald-600">Roster generated successfully — all constraints satisfied.</span>';
+      ? '<span class="text-amber-600">' + esc(spec.shortLabel) + ' roster generated with ' + warnings.length + ' warning(s): ' + esc(warnings.join(' | ')) + '</span>'
+      : '<span class="text-emerald-600">' + esc(spec.shortLabel) + ' roster generated — all constraints satisfied' +
+        (useTimetable ? ' (teaching timetable respected).' : ' (all teachers available).') + '</span>';
     renderRosterOutput();
     refreshStats();
   }
@@ -1280,24 +1831,56 @@
     document.getElementById('generatorMsg').textContent = '';
   }
 
+  /* What the roster says about itself. Read from the roster record, not from the
+     picker, so a roster generated before the school changed the exam type still
+     describes the sitting it was built for. */
+  function rosterMeta() {
+    const meta = state.roster || {};
+    const spec = meta.examType ? InvigismartExamTypes.byId(meta.examType) : null;
+    return {
+      label: meta.examTypeLabel || (spec ? spec.label : '') || 'Exam type not recorded',
+      grades: (meta.gradeScope && meta.gradeScope.length) ? meta.gradeScope : (spec ? spec.grades : []),
+      timetable: !!meta.considerTimetable,
+      generatedAt: meta.generatedAt,
+      warnings: meta.warnings || []
+    };
+  }
+
   function renderRosterOutput() {
     const out = document.getElementById('rosterOutput');
     if (!state.roster || !state.roster.assignments.length) {
-      out.innerHTML = '<div class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-400 text-sm"><i data-lucide="clipboard-list" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>No roster generated yet. Register teachers, schedules and exams — then click "Generate Balanced Roster".</div>';
+      out.innerHTML = '<div class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-400 text-sm"><i data-lucide="clipboard-list" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>No roster generated yet. Choose the exam type, register teachers, schedules and exams — then click "Generate Balanced Roster".</div>';
       if (window.lucide) lucide.createIcons();
       return;
     }
+    const meta = rosterMeta();
     const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
-    out.innerHTML = state.roster.assignments.map(a => {
+    const head = `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Exam type</div>
+            <div class="text-sm font-bold text-slate-900">${esc(meta.label)}</div>
+            <div class="text-xs text-slate-500 mt-1">${esc(gradesText(meta.grades))} • Teaching timetable ${meta.timetable ? 'considered' : 'not considered (all teachers available)'}${meta.generatedAt ? ' • Generated ' + esc(new Date(meta.generatedAt).toLocaleString()) : ''}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sessions</div>
+            <div class="text-sm font-bold text-slate-900">${state.roster.assignments.length}</div>
+          </div>
+        </div>
+        ${meta.warnings.length ? `<ul class="mt-3 space-y-1 text-[11px] text-amber-700 list-disc list-inside">${meta.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      </div>`;
+    const cards = state.roster.assignments.map(a => {
       const exam = state.exams.find(x => x.id === a.examId);
       if (!exam) return '';
       const needed = invigCount(exam.students);
       const ok = a.teacherIds.length === needed;
+      const grade = examGrade(exam);
       return `
       <div class="bg-white rounded-2xl border ${ok ? 'border-slate-200' : 'border-amber-300'} shadow-sm p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div class="font-bold text-sm text-slate-900">${esc(exam.subject)}</div>
+            <div class="font-bold text-sm text-slate-900">${esc(exam.subject)}${grade ? ' <span class="text-slate-400 font-semibold">Gr ' + grade + '</span>' : ''}</div>
             <div class="text-xs text-slate-500">${esc(exam.date)} • ${esc(exam.day)} ${esc(exam.period)} • ${exam.students} students → ${needed} invigilator(s)</div>
           </div>
           <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${ok ? 'FULLY STAFFED' : 'UNDERSTAFFED'}</span>
@@ -1309,20 +1892,69 @@
         </div>
       </div>`;
     }).join('');
+    out.innerHTML = head + cards;
     if (window.lucide) lucide.createIcons();
   }
 
   function exportRosterCSV() {
     if (!state.roster) { alert('Generate a roster first.'); return; }
+    const meta = rosterMeta();
     const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
-    const rows = ['Date,Day,Period,Subject,Students,Required,Invigilators'];
+    // The same shape the server writes: a provenance line, then the Grade
+    // column, so a file from the browser and a file from /api/roster/export
+    // can be read by the same person.
+    const rows = [
+      '# ' + InvigismartExamTypes.summaryLine({ label: meta.label, grades: meta.grades }, meta.timetable),
+      'Date,Day,Period,Subject,Grade,Students,Required,Invigilators'
+    ];
     state.roster.assignments.forEach(a => {
       const exam = state.exams.find(x => x.id === a.examId);
       if (!exam) return;
-      rows.push([exam.date, exam.day, exam.period, '"' + exam.subject + '"', exam.students, invigCount(exam.students), '"' + a.teacherIds.map(tname).join('; ') + '"'].join(','));
+      rows.push([exam.date, exam.day, exam.period,
+        '"' + exam.subject.replace(/"/g, '""') + '"', examGrade(exam) || '',
+        exam.students, invigCount(exam.students),
+        '"' + a.teacherIds.map(tname).join('; ') + '"'].join(','));
     });
     download('invigilation_roster.csv', rows.join('\n'), 'text/csv');
   }
+
+  /* The master roster is the sheet that goes on the staffroom wall: one line
+     per paper, the sitting it belongs to and the team on it. It is rendered
+     into #printMasterRoster, which only exists in the print stylesheet. */
+  function printMasterRoster() {
+    if (!state.roster || !state.roster.assignments.length) { alert('Generate a roster first.'); return; }
+    const meta = rosterMeta();
+    const tname = id => (state.teachers.find(t => t.id === id) || {}).name || 'Unknown';
+    const school = (state.auth && state.auth.school) || '';
+    document.getElementById('printMasterHeader').innerHTML = `
+      <h1>${esc(school ? school + ' — ' : '')}Master Invigilation Roster</h1>
+      <p class="meta">${esc(meta.label)} &bull; ${esc(gradesText(meta.grades))} &bull; Teaching timetable ${meta.timetable ? 'considered' : 'not considered (all teachers available)'}</p>
+      <p class="meta">Generated ${esc(meta.generatedAt ? new Date(meta.generatedAt).toLocaleString() : '—')} &bull; ${state.roster.assignments.length} paper(s)</p>
+      ${meta.warnings.length ? `<p class="meta">Warnings: ${esc(meta.warnings.join(' | '))}</p>` : ''}`;
+    document.getElementById('printMasterBody').innerHTML = state.roster.assignments.map(a => {
+      const exam = state.exams.find(x => x.id === a.examId);
+      if (!exam) return '';
+      const needed = invigCount(exam.students);
+      const short = a.teacherIds.length < needed;
+      return `<tr>
+        <td>${esc(exam.date)}</td>
+        <td>${esc(exam.day)}</td>
+        <td>${esc(exam.period)}</td>
+        <td>${esc(examGrade(exam) || '')}</td>
+        <td>${esc(exam.subject)}</td>
+        <td>${esc(exam.students)}</td>
+        <td>${needed}${short ? ' (short)' : ''}</td>
+        <td>${a.teacherIds.length ? esc(a.teacherIds.map(tname).join(', ')) : '—'}</td>
+      </tr>`;
+    }).join('');
+    document.body.classList.add('printing-master');
+    window.print();
+    // The class hides the dashboard while the dialog is open; the timeout is a
+    // fallback for browsers that never fire afterprint.
+    setTimeout(() => document.body.classList.remove('printing-master'), 1000);
+  }
+
+  window.addEventListener('afterprint', () => document.body.classList.remove('printing-master'));
 
   /* =========================================================
      TEACHER VIEW
@@ -1358,9 +1990,9 @@
       </div>
       <div class="mt-4 overflow-x-auto">
         <table class="w-full text-left text-xs">
-          <thead><tr class="text-slate-500 font-bold border-b border-slate-100"><th class="py-2 pr-4">Date</th><th class="py-2 pr-4">Day</th><th class="py-2 pr-4">Period</th><th class="py-2">Exam Subject</th></tr></thead>
-          <tbody>${duties.length ? duties.map(d => `<tr class="border-b border-slate-50"><td class="py-2 pr-4">${esc(d.date)}</td><td class="py-2 pr-4">${esc(d.day)}</td><td class="py-2 pr-4">${esc(d.period)}</td><td class="py-2 font-semibold text-slate-800">${esc(d.subject)}</td></tr>`).join('')
-            : '<tr><td colspan="4" class="py-4 text-center text-slate-400">No invigilation duties assigned yet. Generate a roster first.</td></tr>'}</tbody>
+          <thead><tr class="text-slate-500 font-bold border-b border-slate-100"><th class="py-2 pr-4">Date</th><th class="py-2 pr-4">Day</th><th class="py-2 pr-4">Period</th><th class="py-2 pr-4">Gr</th><th class="py-2">Exam Subject</th></tr></thead>
+          <tbody>${duties.length ? duties.map(d => `<tr class="border-b border-slate-50"><td class="py-2 pr-4">${esc(d.date)}</td><td class="py-2 pr-4">${esc(d.day)}</td><td class="py-2 pr-4">${esc(d.period)}</td><td class="py-2 pr-4">${esc(examGrade(d) || '—')}</td><td class="py-2 font-semibold text-slate-800">${esc(d.subject)}</td></tr>`).join('')
+            : '<tr><td colspan="5" class="py-4 text-center text-slate-400">No invigilation duties assigned yet. Generate a roster first.</td></tr>'}</tbody>
         </table>
       </div>
       ${busy.length ? '<div class="mt-4 text-[11px] text-slate-400">Regular teaching commitments (protected): ' + busy.map(b => esc(b.day + ' ' + b.period + ' — ' + b.klass)).join(' • ') + '</div>' : ''}`;
@@ -1383,7 +2015,8 @@
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        ['teachers', 'schedules', 'exams', 'roster', 'licenseExpiry', 'auth'].forEach(k => {
+        ['teachers', 'schedules', 'exams', 'papers', 'roster', 'examType',
+         'considerTimetable', 'licenseExpiry', 'auth'].forEach(k => {
           if (k in data) state[k] = data[k];
         });
         saveState(); refreshAll();
@@ -1645,16 +2278,23 @@
       { id: uid(), teacherId: t6.id, day: 'Thursday', period: 'P2', klass: 'Gr12D Accounting' }
     ];
     state.exams = [
-      { id: uid(), date: '2026-10-05', day: 'Monday', period: 'P1', subject: 'Mathematics Gr12', students: 84 },
-      { id: uid(), date: '2026-10-05', day: 'Monday', period: 'P2', subject: 'English Home Language Gr10', students: 55 },
-      { id: uid(), date: '2026-10-06', day: 'Tuesday', period: 'P1', subject: 'Physical Science Gr11', students: 62 },
-      { id: uid(), date: '2026-10-06', day: 'Tuesday', period: 'P3', subject: 'History Gr12', students: 40 },
-      { id: uid(), date: '2026-10-07', day: 'Wednesday', period: 'P2', subject: 'Accounting Gr12', students: 36 },
-      { id: uid(), date: '2026-10-08', day: 'Thursday', period: 'P1', subject: 'Life Sciences Gr9', students: 90 },
-      { id: uid(), date: '2026-10-09', day: 'Friday', period: 'P2', subject: 'Afrikaans FAL Gr10', students: 28 }
+      { id: uid(), date: '2026-10-05', day: 'Monday', period: 'P1', grade: 12, subject: 'Mathematics', students: 84 },
+      { id: uid(), date: '2026-10-05', day: 'Monday', period: 'P2', grade: 10, subject: 'English Home Language', students: 55 },
+      { id: uid(), date: '2026-10-06', day: 'Tuesday', period: 'P1', grade: 11, subject: 'Physical Science', students: 62 },
+      { id: uid(), date: '2026-10-06', day: 'Tuesday', period: 'P3', grade: 12, subject: 'History', students: 40 },
+      { id: uid(), date: '2026-10-07', day: 'Wednesday', period: 'P2', grade: 12, subject: 'Accounting', students: 36 },
+      { id: uid(), date: '2026-10-08', day: 'Thursday', period: 'P1', grade: 9, subject: 'Life Sciences', students: 90 },
+      { id: uid(), date: '2026-10-09', day: 'Friday', period: 'P2', grade: 10, subject: 'Afrikaans FAL', students: 28 }
     ];
+    // The sample is a whole-school sitting (Grades 9-12), so it is a Term 2
+    // roster: the only type whose scope covers every grade.
+    state.papers = state.exams.map(e => ({
+      id: uid(), subject: e.subject, grade: e.grade, students: e.students, sessionId: e.id
+    }));
+    state.examType = 'term2';
+    state.considerTimetable = false;
     state.roster = null;
-    saveState(); refreshAll();
+    saveState(); populateExamTypeSelect(); refreshAll();
     switchTab('dashboard');
   }
 
@@ -1716,6 +2356,8 @@
     populateScheduleTeacherSelect();
     renderSchedules();
     renderExams();
+    renderPapers();
+    renderExamTypePanel();
     renderRosterOutput();
     populateTeacherViewSelect();
     refreshStats();
@@ -1755,6 +2397,7 @@
     loadState();
     // Security fix: never prefill identity or password fields with fake values.
     document.getElementById('authPassword').value = '';
+    populateExamTypeSelect();          // renders the picker from the catalogue
     refreshAll();
     if (window.lucide) lucide.createIcons();
     loadPlanCopy();

@@ -81,6 +81,7 @@ SITE_FILES=(
   assets/logo.svg
   assets/logo-mark.svg
   assets/timetable-import.js
+  assets/exam-types.js
 )
 
 for f in "${SITE_FILES[@]}"; do
@@ -106,7 +107,7 @@ verify_site() {
   echo "verifying over HTTPS:"
   local p code size ip stale=0
   for p in / /landing.html /privacy /terms /privacy.html /terms.html \
-           /assets/timetable-import.js; do
+           /assets/timetable-import.js /assets/exam-types.js; do
     printf '  %-30s ' "$p"
     read -r code size ip < <(curl -s -o /dev/null \
       -w '%{http_code} %{size_download} %{remote_ip}\n' "$SITE_URL$p")

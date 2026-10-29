@@ -32,11 +32,14 @@ privacy.html            Privacy Policy, POPIA & GDPR compliant (linked from sign
 assets/
   logo-mark.svg         Brand mark (shield + calendar + green check); favicon + header icon
   logo.svg              Full lockup (mark + "Invigismart Pro" wordmark)
+  timetable-import.js   Pure staff-timetable grid parser (no DOM, testable)
+  exam-types.js         Exam-type catalogue (browser mirror of server/examtypes.py)
 server/
   app.py                HTTP server: routing, static files, API endpoints
   config.py             Environment-driven configuration
   db.py                 SQLite persistence (users, subscriptions, payments, documents, event log)
   documents.py          Multipart parsing, PDF validation and safe document names
+  examtypes.py          Exam-type catalogue: grade scopes + timetable policy per sitting
   security.py           PBKDF2 password hashing + HS256 JWT sessions
   billing.py            Billing state machine: checkout, entitlement events, mock mode
   payfast.py            PayFast gateway: signed payment form, ITN validation, recurring API
@@ -179,6 +182,56 @@ script, so it is pure and testable without a browser. The schedules table has a
 per-teacher filter because a full staff timetable can add roughly a thousand
 rows.
 
+## Exam types
+
+A roster is always generated for **one sitting**, and the sitting decides the
+rules. Nothing is generated until one is picked, and the catalogue is defined
+once in `server/examtypes.py` and mirrored as data in `assets/exam-types.js`
+(the test suite compares the two files, so they cannot drift):
+
+| Exam type | Grades | Teaching timetable | Notes |
+| --- | --- | --- | --- |
+| `term2` — Term 2 exam (June) | 8–12 | optional, **off** by default | The mid-year sitting: lessons are suspended, so *all teachers are available for invigilation*. Switch the toggle on if some classes still run. |
+| `gr12_prelim` — Grade 12 preliminary | 12 only | **required** | Only Grade 12 writes and the rest of the school is on timetable, so a teacher in front of a class cannot invigilate. |
+| `gr12_final` — Grade 12 final (NSC) | 12 only | **required** | As above: Grade 8–11 lessons continue alongside the papers. |
+| `term4` — Term 4 exam | 8–11 only | optional, **on** by default | Written after the Grade 12 candidates finish; teaching continues for the grades that are not writing. |
+
+The rules that hold for every sitting are unchanged: 1:30 invigilator ratio, no
+own-subject invigilation (subject aliases such as `ENGHL` and `English Home
+Language` are folded together), no double-booking inside a slot, and load
+balancing. A paper whose grade is outside the sitting is a **hard error** —
+silently dropping it would let a school print a Grade 12 prelim roster that
+quietly omits the Grade 10 papers. A paper with *no* grade at all is allowed and
+reported as a warning, because the subject label may simply not say.
+
+The same rules are enforced in three places, deliberately: `server/examtypes.py`
++ `server/roster.py` (authoritative), the browser engine in `index.html` (instant
+redraw) and the API's 400 responses. `POST /api/roster/generate` and
+`/api/roster/export` therefore require an `examType`, and a Gr 12 request that
+asks for `considerTimetable: false` is refused rather than silently corrected.
+
+## Paper list and master roster
+
+The exams office usually knows the paper totals before the timetable is final,
+so the **Exam Timetable** tab keeps a separate paper list of
+`subject, grade, students`:
+
+* upload a CSV (`subject,grade,students`, with or without a header) or add
+  papers by hand;
+* each paper shows the invigilators the 1:30 ratio will need, and
+  **Needs a slot** until it is scheduled;
+* scheduling a paper asks for date, day and period once and keeps them for the
+  next unscheduled paper, which is how a slot-by-slot timetable is actually
+  captured;
+* a scheduled paper *is* an exam session, so it feeds the roster directly, and
+  unscheduling or deleting it keeps the two tables consistent.
+
+**Print Master Roster** (Generator tab) renders the printable sheet — school,
+sitting, grade scope, timetable policy, generation timestamp, warnings, one line
+per paper with its team and a prepared/checked sign-off — into a print-only
+block, so the dashboard chrome never ends up on paper. The CSV export carries the
+same provenance line and a `Grade` column as `/api/roster/export`.
+
 ## API reference
 
 | Method | Path | Auth | Purpose |
@@ -194,8 +247,9 @@ rows.
 | `POST` | `/api/billing/webhook` | gateway | PayFast ITN (form-encoded, verified) or a Stripe event (signature-verified) |
 | `POST` | `/api/billing/mock-activate` | Bearer | *(mock mode)* simulate a payment |
 | `POST` | `/api/billing/dev-expire` | Bearer | *(mock mode)* force expiry |
-| `POST` | `/api/roster/generate` | Bearer + entitled | Run the solver |
+| `POST` | `/api/roster/generate` | Bearer + entitled | Run the solver for one exam type |
 | `POST` | `/api/roster/export` | Bearer + **paid** | Render the clean, unwatermarked roster CSV |
+| `GET` | `/api/exam-types` | - | The exam-type catalogue and the 1:30 ratio the solver uses |
 | `GET` | `/api/events` | Bearer | Recent webhook events (audit trail) |
 | `GET` | `/api/documents` | Bearer | List this account's PDFs plus storage limits |
 | `POST` | `/api/documents` | Bearer | Upload one PDF (`multipart/form-data`: `file`, `title`, `category`) |
@@ -203,14 +257,28 @@ rows.
 | `DELETE` | `/api/documents/<id>` | Bearer | Delete one PDF |
 | `GET` | `/mock-checkout` | - | *(mock mode)* local mock checkout stand-in |
 
-`POST /api/roster/generate` accepts `{ teachers, schedules, exams }` and returns
+`POST /api/roster/generate` accepts
+`{ teachers, schedules, exams, examType, considerTimetable }` and returns
 `{ assignments: [{ examId, teacherIds }], warnings, generatedAt, summary,
-entitlement, trialArtifact }`.
+examType, examTypeLabel, gradeScope, considerTimetable, entitlement,
+trialArtifact }`.
 
-`POST /api/roster/export` accepts `{ teachers, exams, assignments }` and returns
+`examType` is **required** (`term2`, `gr12_prelim`, `gr12_final` or `term4`) and
+is checked before any work is done: an unknown or missing type, a paper outside
+the sitting's grade scope, or `considerTimetable: false` on a Grade 12 sitting is
+a `400` with `code: "exam_type_invalid"` and a message written for the exams
+office. `considerTimetable` is optional: Term 2 defaults to `false` ("all
+teachers available"), Term 4 to `true`, and the Grade 12 types ignore it because
+they always consult the timetable. Every paper may carry `grade` (`12`, `"Gr
+12"`), otherwise the grade is read from the subject label.
+
+`POST /api/roster/export` accepts
+`{ teachers, exams, assignments, examType, considerTimetable }` and returns
 `{ filename, csv }`. It re-renders the rows it is given (no solver, so the file
-cannot drift from what is on screen) and is the **only** path to a clean,
-unwatermarked artifact: anything other than a live subscription gets `402`.
+cannot drift from what is on screen), opens with a `#` provenance line naming
+the sitting, its grade scope and whether teaching was respected, and includes a
+`Grade` column. It is the **only** path to a clean, unwatermarked artifact:
+anything other than a live subscription gets `402`.
 
 ### Document library
 
@@ -378,6 +446,13 @@ there is no configured billing or no linked Stripe customer), which page each
 route serves (`/`, `/app`, `/login`, `/signup`), that the brand logo assets are
 served and both pages wire up the palette, and that server sources and the
 database are not publicly served.
+
+The exam-type suites pin the four sittings, their grade scopes and their
+timetable policy; prove a missing or unknown `examType` and a paper outside the
+sitting's grades are refused; prove a Grade 12 roster cannot switch the
+timetable off while Term 2 uses every teacher; compare the browser catalogue in
+`assets/exam-types.js` against `server/examtypes.py` so the two engines cannot
+drift; and check the export carries the sitting stamp and the `Grade` column.
 
 The document-library tests upload real multipart bodies (binary bytes and
 UTF-8 filenames included), prove that PDF magic bytes are enforced, check that

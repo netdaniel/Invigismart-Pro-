@@ -10,6 +10,8 @@ import math
 import re
 from datetime import datetime, timezone
 
+import examtypes
+
 DEFAULT_RATIO = 30
 
 # Timetables and exam papers rarely spell a subject the same way. The importer
@@ -141,15 +143,52 @@ def _int(value):
         return 0
 
 
-def generate_roster(teachers, schedules, exams, ratio=DEFAULT_RATIO):
+def generate_roster(
+    teachers,
+    schedules,
+    exams,
+    ratio=DEFAULT_RATIO,
+    exam_type=None,
+    consider_timetable=None,
+):
+    """Balance invigilation load under the rules of one exam type.
+
+    ``exam_type`` is optional here so the module can be exercised on its own,
+    but the HTTP API insists on it: a roster without a sitting has no grade
+    scope and no timetable policy, and the school would not know which rules it
+    was generated under.
+
+    ``consider_timetable`` is resolved by the exam type. The two Grade 12 types
+    always consult the timetable (asking to ignore it raises), Term 2 defaults
+    to "all teachers available", and Term 4 defaults to teaching-aware. When the
+    timetable is ignored the schedules are dropped entirely rather than merely
+    skipped, so the busy-slot rule cannot leak back in.
+    """
     teachers = list(teachers or [])
     schedules = list(schedules or [])
     exams = list(exams or [])
 
+    spec = examtypes.get(exam_type) if exam_type is not None else None
+    warnings = []
+    if spec is not None:
+        warnings.extend(examtypes.validate(spec, exams))
+        use_timetable = examtypes.resolve_timetable(spec, consider_timetable)
+        if use_timetable and not schedules:
+            # Not an error: a school may genuinely have no timetable loaded yet.
+            # Saying so is the difference between "the rule was applied" and
+            # "the rule looked applied because nobody was flagged".
+            warnings.append(
+                "No teaching timetable is loaded: every teacher was treated as "
+                "free, so the timetable rule could not exclude anyone."
+            )
+    else:
+        use_timetable = True
+    if not use_timetable:
+        schedules = []
+
     load = {t.get("id"): 0 for t in teachers}
     booked = set()
     assignments = []
-    warnings = []
 
     ordered = sorted(
         exams,
@@ -201,6 +240,12 @@ def generate_roster(teachers, schedules, exams, ratio=DEFAULT_RATIO):
         "assignments": assignments,
         "warnings": warnings,
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # The exam type travels with the result so the browser, the CSV export
+        # and the printed master roster all state the same sitting and rules.
+        "examType": spec["id"] if spec else None,
+        "examTypeLabel": spec["label"] if spec else None,
+        "gradeScope": list(spec["grades"]) if spec else [],
+        "considerTimetable": use_timetable,
         "summary": {
             "exams": len(ordered),
             "teachers": len(teachers),
@@ -224,13 +269,25 @@ def _csv_field(value):
     return text
 
 
-def export_roster_csv(teachers, exams, assignments, ratio=DEFAULT_RATIO):
+def export_roster_csv(
+    teachers,
+    exams,
+    assignments,
+    ratio=DEFAULT_RATIO,
+    exam_type=None,
+    consider_timetable=None,
+):
     """Render a generated roster as CSV - formatting only, no solver.
 
     The assignments are passed in exactly as the school saw them, so the export
     can never drift from what is on screen. This is the clean, unwatermarked
     artifact: the backend only reaches it for a paid subscription, never for a
     free evaluation.
+
+    When an exam type is supplied the file opens with a ``#`` provenance line
+    naming the sitting, its grade scope and whether teaching was respected, and
+    every paper carries its grade. A printed roster without that context is
+    ambiguous a term later, which is exactly when schools re-use it.
     """
     names = {}
     for teacher in teachers or []:
@@ -244,18 +301,28 @@ def export_roster_csv(teachers, exams, assignments, ratio=DEFAULT_RATIO):
         if eid:
             exams_by_id[eid] = exam
 
-    rows = [["Date", "Day", "Period", "Subject", "Students", "Required", "Invigilators"]]
+    rows = []
+    if exam_type is not None:
+        spec = examtypes.get(exam_type)
+        rows.append(
+            ["# " + examtypes.summary_line(spec, examtypes.resolve_timetable(spec, consider_timetable))]
+        )
+    rows.append(
+        ["Date", "Day", "Period", "Subject", "Grade", "Students", "Required", "Invigilators"]
+    )
     for assignment in assignments or []:
         exam = exams_by_id.get(assignment.get("examId"))
         if not exam:
             continue
         invigilators = assignment.get("teacherIds") or []
+        grade = examtypes.grade_of(exam)
         rows.append(
             [
                 exam.get("date") or "",
                 exam.get("day") or "",
                 exam.get("period") or "",
                 exam.get("subject") or "",
+                grade if grade is not None else "",
                 exam.get("students") if exam.get("students") is not None else "",
                 invigilators_required(exam.get("students"), ratio),
                 "; ".join(names.get(tid, "Unknown") for tid in invigilators),

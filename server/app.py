@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import billing
 import documents
+import examtypes
 import payfast
 import roster
 import security
@@ -329,7 +330,13 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, self._me_payload(STORE.get_user_by_id(user["id"])))
 
     def _roster_payload(self, body):
-        """Validate the roster-shaped part of a generate/export request body."""
+        """Validate the roster-shaped part of a generate/export request body.
+
+        The exam type is mandatory and is checked here rather than inside the
+        solver so a bad sitting (a Grade 10 paper in a Gr 12 prelim, or a
+        request to ignore the timetable for a Gr 12 roster) is refused with a
+        readable 400 before any work is done.
+        """
         teachers = body.get("teachers")
         exams = body.get("exams")
         schedules = body.get("schedules")
@@ -341,7 +348,15 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "Need at least one teacher and one exam session.")
         if len(teachers) > 2000 or len(exams) > 2000:
             raise ApiError(400, "Too many teachers or exams in a single request.")
-        return teachers, exams, schedules
+        try:
+            spec = examtypes.get(body.get("examType"))
+            consider_timetable = examtypes.resolve_timetable(
+                spec, body.get("considerTimetable")
+            )
+            examtypes.validate(spec, exams)
+        except examtypes.ExamTypeError as exc:
+            raise ApiError(400, str(exc), code="exam_type_invalid")
+        return teachers, exams, schedules, spec["id"], consider_timetable
 
     def _api_generate_roster(self, user, body):
         ent = billing.entitlement(STORE, user, CONFIG)
@@ -351,8 +366,14 @@ class Handler(BaseHTTPRequestHandler):
                 "An active subscription is required to generate rosters.",
                 code="subscription_required",
             )
-        teachers, exams, schedules = self._roster_payload(body)
-        result = roster.generate_roster(teachers, schedules, exams)
+        teachers, exams, schedules, exam_type, consider_timetable = self._roster_payload(body)
+        result = roster.generate_roster(
+            teachers,
+            schedules,
+            exams,
+            exam_type=exam_type,
+            consider_timetable=consider_timetable,
+        )
         result["entitlement"] = ent
         # The evaluation window runs the real solver, so what it produces is
         # stamped as an evaluation copy: only a paid licence yields a clean export.
@@ -372,7 +393,7 @@ class Handler(BaseHTTPRequestHandler):
                 "A clean, unwatermarked export requires an annual subscription.",
                 code="subscription_required",
             )
-        teachers, exams, _schedules = self._roster_payload(body)
+        teachers, exams, _schedules, exam_type, consider_timetable = self._roster_payload(body)
         assignments = body.get("assignments")
         if not isinstance(assignments, list):
             raise ApiError(400, "assignments must be an array.")
@@ -382,7 +403,13 @@ class Handler(BaseHTTPRequestHandler):
             200,
             {
                 "filename": "invigilation_roster.csv",
-                "csv": roster.export_roster_csv(teachers, exams, assignments),
+                "csv": roster.export_roster_csv(
+                    teachers,
+                    exams,
+                    assignments,
+                    exam_type=exam_type,
+                    consider_timetable=consider_timetable,
+                ),
                 "entitlement": ent,
             },
         )
@@ -585,6 +612,17 @@ class Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "time": billing.to_iso(billing.utcnow()),
                         "config": CONFIG.describe(),
+                    },
+                )
+            elif path == "/api/exam-types":
+                # Static reference data: the dashboard renders the exam-type
+                # picker and its rule panel from this, so the browser's copy and
+                # the solver's copy describe exactly the same sittings.
+                self._json(
+                    200,
+                    {
+                        "examTypes": examtypes.list_exam_types(),
+                        "defaultRatio": roster.DEFAULT_RATIO,
                     },
                 )
             elif path == "/api/me":

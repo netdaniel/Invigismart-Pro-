@@ -538,18 +538,21 @@
             <div class="flex items-start gap-4">
               <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 shadow-md shadow-indigo-200">4</span>
               <div class="min-w-0 flex-1">
-                <h3 class="font-bold text-slate-900">Enter the exam timetable</h3>
+                <h3 class="font-bold text-slate-900">Enter the paper list and exam timetable</h3>
                 <p class="mt-2 text-sm text-slate-600 leading-relaxed">
-                  On the <strong class="text-slate-800">Exam Timetable</strong> tab add one row per paper: date, day,
-                  period, subject (with grade) and the number of candidates sitting it. The moment a session is added
-                  the table shows <strong class="text-slate-800">Invigilators Needed (1:30)</strong>, so you can see
-                  where you are short-staffed before you generate anything.
+                  Upload the paper list your exams office works from
+                  (<strong class="text-slate-800">subject, grade, number of students</strong>) on the
+                  <strong class="text-slate-800">Exam Timetable</strong> tab, then give each paper a date, day and
+                  period. The moment a paper is on the timetable the table shows
+                  <strong class="text-slate-800">Invigilators Needed (1:30)</strong>, so you can see where you are
+                  short-staffed before you generate anything.
                 </p>
                 <p class="mt-3 text-xs text-slate-500">
                   <span class="font-semibold text-slate-700">Where:</span> dashboard &rarr;
                   <strong class="text-slate-800">Exam Timetable</strong> &rarr;
-                  <strong class="text-slate-800">Add Exam Session</strong>, or
-                  <strong class="text-slate-800">Upload CSV</strong> for a whole session list.
+                  <strong class="text-slate-800">Upload paper list</strong> or
+                  <strong class="text-slate-800">Add paper</strong>, then
+                  <strong class="text-slate-800">Schedule</strong> it into a slot.
                 </p>
               </div>
             </div>
@@ -559,13 +562,15 @@
             <div class="flex items-start gap-4">
               <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 shadow-md shadow-indigo-200">5</span>
               <div class="min-w-0 flex-1">
-                <h3 class="font-bold text-slate-900">Generate the balanced roster</h3>
+                <h3 class="font-bold text-slate-900">Choose the exam and generate the balanced roster</h3>
                 <p class="mt-2 text-sm text-slate-600 leading-relaxed">
-                  Open <strong class="text-slate-800">Roster Generator</strong> and press
-                  <strong class="text-slate-800">Generate Balanced Roster</strong>. The constraint solver runs on our
-                  server and applies every rule at once: the 1:30 invigilator ratio, never the paper's own subject
-                  teacher, never a teacher with a clashing class, and a fair spread of total duties across the staff.
-                  Sessions it cannot cover are flagged rather than quietly under-filled.
+                  Open <strong class="text-slate-800">Roster Generator</strong>, pick the
+                  <strong class="text-slate-800">exam type</strong> &mdash; Term 2 (all teachers available),
+                  Gr&nbsp;12 prelim, Gr&nbsp;12 final, or Term 4 for Grades 8&ndash;11 &mdash; then press
+                  <strong class="text-slate-800">Generate Balanced Roster</strong>. Grade&nbsp;12 prelim and final
+                  rosters <em>always</em> respect the teaching timetable, so a teacher in front of a class is never
+                  rostered. Every sitting keeps the 1:30 ratio, never the paper's own subject teacher, and a fair
+                  spread of total duties. Sessions it cannot cover are flagged rather than quietly under-filled.
                 </p>
                 <p class="mt-3 text-xs text-slate-500">
                   <span class="font-semibold text-slate-700">Tip:</span> not ready to type real names yet?
@@ -580,13 +585,15 @@
             <div class="flex items-start gap-4">
               <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 shadow-md shadow-indigo-200">6</span>
               <div class="min-w-0 flex-1">
-                <h3 class="font-bold text-slate-900">Print duty sheets and export the records</h3>
+                <h3 class="font-bold text-slate-900">Print the master roster, duty sheets and records</h3>
                 <p class="mt-2 text-sm text-slate-600 leading-relaxed">
-                  Choose a name in <strong class="text-slate-800">Teacher View</strong> to see that teacher's personal
-                  invigilation schedule, then press <strong class="text-slate-800">Print Duty Sheet</strong> &mdash; the
-                  print layout drops the navigation so each teacher gets a clean sheet for the staffroom wall. For the
-                  whole picture use <strong class="text-slate-800">Export Roster CSV</strong> to hand the data to your
-                  SMT or file it with your exam records.
+                  <strong class="text-slate-800">Print Master Roster</strong> produces the whole-school sheet: the
+                  exam type, its grade scope, whether the teaching timetable was respected, one line per paper with
+                  its invigilation team, and a prepared/checked sign-off. Choose a name in
+                  <strong class="text-slate-800">Teacher View</strong> to see that teacher's personal schedule, then
+                  press <strong class="text-slate-800">Print Duty Sheet</strong> for a clean sheet for the staffroom
+                  wall. <strong class="text-slate-800">Export Roster CSV</strong> hands the data to your SMT or files
+                  it with your exam records.
                 </p>
                 <p class="mt-3 text-sm text-slate-600 leading-relaxed">
                   <span class="font-semibold text-slate-700">Keep the source documents:</span> open

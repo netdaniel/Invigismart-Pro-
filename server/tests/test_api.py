@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -33,6 +34,7 @@ import billing  # noqa: E402
 import config  # noqa: E402
 import db  # noqa: E402
 import documents  # noqa: E402
+import examtypes  # noqa: E402
 import payfast  # noqa: E402
 import roster  # noqa: E402
 
@@ -179,12 +181,19 @@ def sample_payload():
     ]
     exams = [
         {"id": "e1", "date": "2026-06-01", "day": "MON", "period": "AM",
-         "subject": "Maths", "students": 90},
+         "subject": "Maths", "grade": 12, "students": 90},
         {"id": "e2", "date": "2026-06-02", "day": "TUE", "period": "AM",
-         "subject": "Physics", "students": 45},
+         "subject": "Physics", "grade": 12, "students": 45},
     ]
     schedules = [{"id": "s1", "teacherId": "t3", "day": "TUE", "period": "AM", "klass": "12A"}]
-    return {"teachers": teachers, "exams": exams, "schedules": schedules}
+    return {
+        "teachers": teachers,
+        "exams": exams,
+        "schedules": schedules,
+        # Every roster names its sitting. Grade 12 prelims must respect the
+        # teaching timetable, which is the rule the assertions below rely on.
+        "examType": "gr12_prelim",
+    }
 
 
 def days_between(earlier, later):
@@ -474,6 +483,220 @@ class RosterSubjectAliasTests(unittest.TestCase):
         self.assertEqual(roster._subject_key(""), "")
 
 
+class ExamTypeCatalogueTests(unittest.TestCase):
+    """Which sittings exist, what they cover, and that both engines agree.
+
+    The dashboard holds its own copy of the catalogue so it can redraw without
+    the API. These tests pin the four sittings the exams office actually runs
+    and fail loudly if the browser copy drifts from the server's.
+    """
+
+    def test_the_four_sittings_are_offered_in_order(self):
+        catalogue = examtypes.list_exam_types()
+        self.assertEqual(
+            [spec["id"] for spec in catalogue],
+            ["term2", "gr12_prelim", "gr12_final", "term4"],
+        )
+        self.assertEqual(
+            [spec["shortLabel"] for spec in catalogue],
+            ["Term 2 exam", "Gr 12 prelim", "Gr 12 final", "Term 4 exam"],
+        )
+
+    def test_grade_scopes_match_the_school_calendar(self):
+        self.assertEqual(examtypes.get("term2")["grades"], [8, 9, 10, 11, 12])
+        self.assertEqual(examtypes.get("gr12_prelim")["grades"], [12])
+        self.assertEqual(examtypes.get("gr12_final")["grades"], [12])
+        self.assertEqual(examtypes.get("term4")["grades"], [8, 9, 10, 11])
+
+    def test_grade12_sittings_always_consult_the_teaching_timetable(self):
+        for exam_id in ("gr12_prelim", "gr12_final"):
+            spec = examtypes.get(exam_id)
+            self.assertEqual(spec["timetablePolicy"], examtypes.TIMETABLE_REQUIRED)
+            self.assertTrue(examtypes.resolve_timetable(spec, None))
+            self.assertTrue(examtypes.resolve_timetable(spec, True))
+            with self.assertRaises(examtypes.ExamTypeError):
+                examtypes.resolve_timetable(spec, False)
+
+    def test_term2_is_all_teachers_available_and_term4_defaults_to_teaching_aware(self):
+        term2 = examtypes.get("term2")
+        self.assertFalse(examtypes.resolve_timetable(term2, None))
+        self.assertTrue(examtypes.resolve_timetable(term2, True))
+        term4 = examtypes.get("term4")
+        self.assertTrue(examtypes.resolve_timetable(term4, None))
+        self.assertFalse(examtypes.resolve_timetable(term4, False))
+
+    def test_a_papers_grade_comes_from_the_field_or_the_subject_label(self):
+        self.assertEqual(examtypes.grade_of({"grade": 10}), 10)
+        self.assertEqual(examtypes.grade_of({"grade": "Gr 11"}), 11)
+        self.assertEqual(examtypes.grade_of({"subject": "Mathematics Gr12"}), 12)
+        self.assertEqual(examtypes.grade_of({"subject": "Grade 9 Natural Sciences"}), 9)
+        self.assertIsNone(examtypes.grade_of({"subject": "Life Orientation"}))
+        self.assertIsNone(examtypes.grade_of({"grade": 7}))
+
+    def test_browser_catalogue_is_identical_to_the_server_catalogue(self):
+        path = os.path.join(os.path.dirname(SERVER_DIR), "assets", "exam-types.js")
+        with open(path, encoding="utf-8") as handle:
+            source = handle.read()
+        match = re.search(r"var EXAM_TYPES = (\[.*?\n  \]);", source, re.S)
+        self.assertIsNotNone(match, "assets/exam-types.js no longer declares EXAM_TYPES")
+        self.assertEqual(json.loads(match.group(1)), examtypes.list_exam_types())
+
+    def test_exam_types_endpoint_serves_the_catalogue_without_a_login(self):
+        status, data = request("GET", "/api/exam-types")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["examTypes"], examtypes.list_exam_types())
+        self.assertEqual(data["defaultRatio"], 30)
+        # The dashboard loads the same catalogue as a static asset, so it has to
+        # be reachable over HTTP and ship with the deploy archive.
+        status, asset = request("GET", "/assets/exam-types.js")
+        self.assertEqual(status, 200)
+        self.assertIn("InvigismartExamTypes", asset)
+
+
+
+class ExamTypeRuleTests(unittest.TestCase):
+    """A roster is generated for one sitting, and that sitting has rules."""
+
+    def _paid_token(self, email):
+        status, data = signup(email=email)
+        self.assertEqual(status, 201)
+        token = data["token"]
+        status, _ = request(
+            "POST", "/api/billing/mock-activate", {"days": 365}, token=token
+        )
+        self.assertEqual(status, 200)
+        return token
+
+    def _payload(self, exam_type, **overrides):
+        body = sample_payload()
+        body["examType"] = exam_type
+        body.update(overrides)
+        return body
+
+    def test_a_roster_without_an_exam_type_is_refused(self):
+        token = self._paid_token("sitting@example.com")
+        body = sample_payload()
+        body.pop("examType")
+        status, data = request("POST", "/api/roster/generate", body, token=token)
+        self.assertEqual(status, 400)
+        self.assertEqual(data["code"], "exam_type_invalid")
+        self.assertIn("exam type is required", data["error"])
+        self.assertIn("gr12_prelim", data["error"])
+
+    def test_an_unknown_exam_type_is_refused(self):
+        token = self._paid_token("unknown@example.com")
+        status, data = request(
+            "POST", "/api/roster/generate", self._payload("grade13"), token=token
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("Unknown exam type", data["error"])
+
+    def test_a_prelim_roster_refuses_a_grade_10_paper(self):
+        token = self._paid_token("scope@example.com")
+        body = self._payload("gr12_prelim")
+        body["exams"] = body["exams"] + [
+            {"id": "e9", "date": "2026-06-03", "day": "WED", "period": "AM",
+             "subject": "Life Sciences", "grade": 10, "students": 40},
+        ]
+        status, data = request("POST", "/api/roster/generate", body, token=token)
+        self.assertEqual(status, 400)
+        self.assertIn("only covers Grade 12", data["error"])
+        self.assertIn("Life Sciences (Gr 10)", data["error"])
+
+    def test_a_term4_roster_refuses_a_grade_12_paper(self):
+        token = self._paid_token("term4@example.com")
+        status, data = request(
+            "POST", "/api/roster/generate", self._payload("term4"), token=token
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("only covers Grades 8 to 11", data["error"])
+
+    def test_a_grade12_roster_cannot_ignore_the_timetable(self):
+        token = self._paid_token("timetable@example.com")
+        body = self._payload("gr12_final", considerTimetable=False)
+        status, data = request("POST", "/api/roster/generate", body, token=token)
+        self.assertEqual(status, 400)
+        self.assertIn("must consider the teaching timetable", data["error"])
+
+
+    def test_term2_uses_every_teacher_but_grade12_sittings_respect_lessons(self):
+        teachers = [
+            {"id": "t1", "name": "Ada", "subjects": ["Maths"]},
+            {"id": "t2", "name": "Brian", "subjects": ["History"]},
+        ]
+        # Brian is in front of a Grade 9 class in the Monday morning slot.
+        schedules = [
+            {"id": "s1", "teacherId": "t2", "day": "MON", "period": "AM", "klass": "9A"}
+        ]
+        exams = [
+            {"id": "e1", "date": "2026-06-01", "day": "MON", "period": "AM",
+             "subject": "Maths", "grade": 12, "students": 20},
+        ]
+
+        june = roster.generate_roster(teachers, schedules, exams, exam_type="term2")
+        self.assertFalse(june["considerTimetable"])
+        self.assertEqual(june["assignments"][0]["teacherIds"], ["t2"])
+        self.assertEqual(june["warnings"], [])
+
+        finals = roster.generate_roster(teachers, schedules, exams, exam_type="gr12_final")
+        self.assertTrue(finals["considerTimetable"])
+        self.assertEqual(finals["assignments"][0]["teacherIds"], [])
+        self.assertEqual(len(finals["warnings"]), 1)
+
+        # Term 4 keeps the timetable on by default: Brian is teaching, so the
+        # Grade 10 paper cannot use him either.
+        grade10 = [dict(exams[0], grade=10)]
+        term4 = roster.generate_roster(teachers, schedules, grade10, exam_type="term4")
+        self.assertTrue(term4["considerTimetable"])
+        self.assertEqual(term4["assignments"][0]["teacherIds"], [])
+
+    def test_a_paper_without_a_grade_is_warned_about_not_rejected(self):
+        teachers = [{"id": "t1", "name": "Ada", "subjects": ["Maths"]}]
+        exams = [
+            {"id": "e1", "day": "MON", "period": "AM", "subject": "Robotics", "students": 1}
+        ]
+        result = roster.generate_roster(
+            teachers, [], exams, exam_type="gr12_final", ratio=1
+        )
+        text = " | ".join(result["warnings"])
+        self.assertIn("Robotics", text)                       # the ungraded paper
+        self.assertIn("No teaching timetable", text)          # no schedules supplied
+        self.assertEqual(len(result["warnings"]), 2)
+
+    def test_export_states_the_sitting_and_carries_the_grade_column(self):
+        token = self._paid_token("stamped@example.com")
+        payload = self._payload("gr12_prelim")
+        status, result = request("POST", "/api/roster/generate", payload, token=token)
+        self.assertEqual(status, 200)
+        body = {
+            "teachers": payload["teachers"],
+            "exams": payload["exams"],
+            "assignments": result["assignments"],
+            "examType": "gr12_prelim",
+        }
+        status, export = request("POST", "/api/roster/export", body, token=token)
+        self.assertEqual(status, 200)
+        lines = export["csv"].split("\r\n")
+        self.assertTrue(lines[0].startswith("# Exam type: Grade 12 preliminary exam"))
+        self.assertIn("Teaching timetable: considered", lines[0])
+        self.assertEqual(
+            lines[1], "Date,Day,Period,Subject,Grade,Students,Required,Invigilators"
+        )
+        self.assertIn("2026-06-01,MON,AM,Maths,12,90,3,", export["csv"])
+
+    def test_the_generated_roster_reports_the_sitting_it_was_built_for(self):
+        token = self._paid_token("reported@example.com")
+        status, result = request(
+            "POST", "/api/roster/generate", self._payload("gr12_final"), token=token
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["examType"], "gr12_final")
+        self.assertEqual(result["gradeScope"], [12])
+        self.assertTrue(result["considerTimetable"])
+        self.assertEqual(result["examTypeLabel"], "Grade 12 final exam (NSC)")
+
+
+
 class BillingTests(unittest.TestCase):
     def _new_account(self, email):
         status, data = signup(email=email)
@@ -535,6 +758,7 @@ class TrialWatermarkTests(unittest.TestCase):
             "teachers": payload["teachers"],
             "exams": payload["exams"],
             "assignments": assignments,
+            "examType": payload["examType"],
         }
 
     def test_trial_roster_is_flagged_as_a_trial_artifact(self):
@@ -591,13 +815,19 @@ class TrialWatermarkTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(export["filename"], "invigilation_roster.csv")
         lines = export["csv"].split("\r\n")
-        self.assertEqual(lines[0], "Date,Day,Period,Subject,Students,Required,Invigilators")
-        # One header row plus one row per exam, with no evaluation stamp.
-        self.assertEqual(len(lines), 1 + len(result["assignments"]))
+        # The sitting is stamped on the file: a roster re-used a term later
+        # still says which exam it belongs to and which rules produced it.
+        self.assertTrue(lines[0].startswith("# Exam type: Grade 12 preliminary exam"))
+        self.assertIn("Teaching timetable: considered", lines[0])
+        self.assertEqual(
+            lines[1], "Date,Day,Period,Subject,Grade,Students,Required,Invigilators"
+        )
+        # One stamp, one header row, one row per exam, with no evaluation stamp.
+        self.assertEqual(len(lines), 2 + len(result["assignments"]))
         self.assertNotIn("TRIAL", export["csv"])
         self.assertIn("Ada Lovelace", export["csv"])
         # e1 is Maths (90 students) -> the 1:30 rule asks for 3 invigilators.
-        self.assertIn("2026-06-01,MON,AM,Maths,90,3,", export["csv"])
+        self.assertIn("2026-06-01,MON,AM,Maths,12,90,3,", export["csv"])
 
     def test_export_requires_authentication(self):
         status, _ = request("POST", "/api/roster/export", self._export_body([]))
@@ -609,7 +839,12 @@ class TrialWatermarkTests(unittest.TestCase):
         status, body = request(
             "POST",
             "/api/roster/export",
-            {"teachers": [{"id": "t1", "name": "Ada"}], "exams": [{"id": "e1"}], "assignments": "nope"},
+            {
+                "teachers": [{"id": "t1", "name": "Ada"}],
+                "exams": [{"id": "e1"}],
+                "assignments": "nope",
+                "examType": "gr12_prelim",
+            },
             token=token,
         )
         self.assertEqual(status, 400)
@@ -1164,8 +1399,10 @@ class FrontEndTests(unittest.TestCase):
         # the dashboard, so the guide cannot drift away from the product.
         shared_labels = (
             "Add Busy Slot",
-            "Add Exam Session",
+            "Add paper",
+            "Upload paper list",
             "Generate Balanced Roster",
+            "Print Master Roster",
             "Print Duty Sheet",
             "Export Roster CSV",
             "Load Sample Data",

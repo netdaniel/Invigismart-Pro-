@@ -925,13 +925,13 @@ only for a fresh host; on this one, do step 0 and then §13.2.
 
 ### 13.2 Upload and configure
 
-Three routes. The file list is identical in all of them - 18 files, and never
+Three routes. The file list is identical in all of them - 20 files, and never
 `.env`, the database, `uploads/` or the tests.
 
 **A. FTP, with an account that can see the application root.**
 
 ```bash
-./deploy/upload-passenger.sh                  # dry run: 18 files, nothing sent
+./deploy/upload-passenger.sh                  # dry run: 20 files, nothing sent
 ./deploy/upload-passenger.sh --apply          # upload
 ```
 
