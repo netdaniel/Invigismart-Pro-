@@ -777,6 +777,16 @@ This is the "host it from my service provider" path, and it needs no second
 provider, no VPS and no shell. cPanel's **Setup Python App** runs the server
 under Phusion Passenger, inside the same account your website is already on.
 
+> **This account runs DirectAdmin, not cPanel** (checked 2026-10-30: the panel
+> is DirectAdmin Evolution; the web server is still CloudLinux + Apache +
+> Passenger, so everything below applies unchanged). Menu names differ: the
+> Python app panel is **Setup Python App** under *Advanced Features* (the same
+> Application root / startup file / entry point form), files are **File
+> Manager** (no path bar - the home directory lists `invigismart-api` as a
+> folder to double-click), DNS is **DNS Management**, certificates are **SSL
+> Certificates → Free & automatic certificate from Let's Encrypt**, scheduled
+> jobs are **Cron Jobs**, and error pages are under **Logs → Error Log**.
+
 What changes: Passenger does not proxy to a port. It imports a module and calls
 `application(environ, start_response)`, so a `ThreadingHTTPServer` cannot be the
 entry point. Two files fix that, and neither reimplements anything:
@@ -972,10 +982,11 @@ no credentials at all.
 ./deploy/upload-passenger.sh --zip      # builds deploy/invigismart-api.zip
 ```
 
-Then cPanel → **File Manager** → `invigismart-api` → **Upload** → the zip →
-**Extract** (keep the prefilled app-root path) → delete the zip. The archive
-writes `server/` and `assets/` as their own entries, so every extractor -
-cPanel's, `unzip`, Windows Explorer - recreates the folders.
+Then **File Manager** (in DirectAdmin it opens at `/home/shfckyzk`, with no
+address bar - double-click the `invigismart-api` folder in the list) → **Upload**
+→ the zip → **Extract** (keep the prefilled app-root path) → delete the zip. The
+archive writes `server/` and `assets/` as their own entries, so every extractor -
+DirectAdmin's, `unzip`, Windows Explorer - recreates the folders.
 
 **C. Git, once, if you would rather pull than upload.**
 
