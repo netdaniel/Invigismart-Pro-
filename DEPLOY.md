@@ -1044,6 +1044,18 @@ on import. cPanel → **Errors** (or the app's log file) shows the traceback; th
 usual causes are a missing `.env` (so the production guard exits on purpose,
 §10) or `PAYFAST_PASSPHRASE` not matching the account.
 
+One failure looks like a stale restart but is not: a 500 whose **Error ID changes
+on every request** means Passenger re-reads the app root each time and fails to
+import it. Read the size of the startup file before anything else -
+`passenger_wsgi.py` from this repository is 3068 bytes, and the stub the control
+panel generates is **164 bytes and imports itself**, so it can never work. A
+164-byte file means the zip went up but was never extracted: the app root holds
+the stub alone, with no `server/` and no `assets/`. Extract in place (keep the
+prefilled application-root path - an extractor that creates a folder named after
+the archive leaves the real files one level too deep), then **Restart**. If the
+host has no shell, the symptom to look for in File Manager is a `data/` folder
+that does not exist yet either.
+
 Then a smoke test through the app itself:
 
 ```bash
@@ -1072,6 +1084,14 @@ warm during the working day:
 
 ### 13.5 What shared hosting still costs you
 
+* **The API hostname needs its own certificate.** AutoSSL covers the domain it
+  was issued for, not every name pointing at the same IP: on this host
+  `invigismart.online` had a valid certificate while `api.invigismart.online`
+  still served the machine's default one, so browsers warned on the API host
+  even though `/api/health` answered correctly. Nothing in the product depends on
+  the API hostname (§12, "Then connect the two halves" - the dashboard is
+  same-origin), but issue **SSL Certificates → Let's Encrypt** for it before
+  handing that URL to anyone, or keep using `invigismart.online/api/...`.
 * **One request at a time per process.** Passenger without threads serialises
   requests; the roster solver is quick, but two simultaneous exports queue.
 * **No `systemd`, no `journalctl`, no shell.** Logs are the app's log file and
