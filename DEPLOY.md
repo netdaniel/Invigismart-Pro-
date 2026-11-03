@@ -903,27 +903,46 @@ only for a fresh host; on this one, do step 0 and then §13.2.
    the bridge and every helper are standard library only, so the virtualenv
    cPanel creates stays empty.
 
-3. **FTP is optional, and on this plan it is unusable for the backend.** The one
-   permitted account (`daniel@invigismart.online`) is jailed to the docroot - its
-   `/` lists `index.html`, `landing.html`, `api/`, `assets/` and nothing else - so
-   the application root beside it is invisible to that login. **FTP Accounts**
-   refuses another ("You have reached the maximum number of FTP accounts"). Two
-   ways around it, neither requiring a new account:
+3. **FTP is optional, and it only works from a login whose jail contains the app
+   root.** An FTP account is jailed to the *Path* it was created with, and the
+   jail cannot be escaped: `..` stays at the root, and an absolute path outside
+   it answers `550 ... No such file or directory`. The account the website
+   deploys with (`daniel@invigismart.online`) is jailed to the docroot - its `/`
+   lists `index.html`, `landing.html`, `api/`, `assets/` and nothing else. The
+   second account (`admin@invigismart.online`, created 2026-10-29) is jailed to
+   `/home/shfckyzk/domains/invigismart.online`, which holds `public_html/` but
+   not the app root: `/home/shfckyzk/invigismart-api` sits beside `domains/`,
+   one branch over. So neither login reaches the application as created, and the
+   first command to reach for is this one - it lists what the login can actually
+   see and stops there:
 
-   * **The primary cPanel login.** Username `shfckyzk` (the cPanel user, no
-     `@domain`), password = the **cPanel** password. It is not one of the plan's
+   ```bash
+   ./deploy/upload-passenger.sh --probe
+   ```
+
+   Three ways to get in, none of them needing a *fourth* account:
+
+   * **Point an account's Path at the app root.** DirectAdmin → **FTP
+     Management** → the account → **Path** = `/home/shfckyzk/invigismart-api`,
+     then `BACKEND_REMOTE_DIR=/` - on that login "/" *is* the application root,
+     and it can write nothing else, which is the tightest option there is.
+     Setting Path to `/home/shfckyzk` works too: that jail is the whole home
+     directory, so the app root is one level down and
+     `BACKEND_REMOTE_DIR=invigismart-api`. Either way the `*_BACKEND` names keep
+     the website's upload on the docroot-jailed account it already uses.
+   * **The primary DirectAdmin login.** Username `shfckyzk` (the panel user, no
+     `@domain`), password = the **panel** password. It is not one of the plan's
      FTP accounts, it reaches the whole home directory, and it needs no new
-     anything. Keep the website's working account untouched by using the
-     backend-only overrides:
+     anything:
 
      ```bash
      FTP_USER_BACKEND=shfckyzk
-     FTP_PASS_BACKEND='<cPanel password>'
+     FTP_PASS_BACKEND='<panel password>'
      BACKEND_REMOTE_DIR=invigismart-api   # "/" is the home dir on this login
      ```
 
      A `530 Access denied` means the password supplied was the FTP account's,
-     not the cPanel one.
+     not the panel's.
    * **File Manager + the generated zip** - no credentials at all, §13.2 route B.
 
    Reusing the website's FTP account would only work by creating the application
@@ -941,40 +960,40 @@ Three routes. The file list is identical in all of them - 20 files, and never
 **A. FTP, with an account that can see the application root.**
 
 ```bash
+./deploy/upload-passenger.sh --probe          # what can this login see?
 ./deploy/upload-passenger.sh                  # dry run: 20 files, nothing sent
 ./deploy/upload-passenger.sh --apply          # upload
 ```
 
-It does not have to be a *new* account. The primary cPanel login - the username
-and password you use for cPanel itself - always exists, is **not** counted among
-the plan's FTP accounts, and reaches the whole home directory:
+The remote path follows from the login's jail, not from taste - DirectAdmin →
+**FTP Management** → the account → **Path** decides it:
+
+| The account's Path | `BACKEND_REMOTE_DIR` |
+|---|---|
+| `/home/shfckyzk/invigismart-api` (the app root itself) | `/` |
+| `/home/shfckyzk` (the whole home directory) | `invigismart-api` |
+| the docroot, or the domain directory (`.../domains/<domain>`) | neither - the app root is not inside that jail |
+
+It does not have to be a *new* account. The primary DirectAdmin login - the
+username and password you use for the panel itself - always exists, is **not**
+counted among the plan's FTP accounts, and reaches the whole home directory:
 
 ```bash
-FTP_USER_BACKEND=<cpanel username>        # no @domain; keeps FTP_USER for the site
-FTP_PASS_BACKEND=<cpanel password>        # the cPanel one, not the FTP account's
+FTP_USER_BACKEND=<panel username>         # no @domain; keeps FTP_USER for the site
+FTP_PASS_BACKEND=<panel password>         # the panel one, not the FTP account's
 BACKEND_REMOTE_DIR=invigismart-api        # relative to the home directory
 ```
 
-Those two `*_BACKEND` variables override `FTP_USER`/`FTP_PASS` for this script
-only, which matters here: the website's upload keeps working with its
-docroot-jailed account while the backend goes up through the home-directory
-login, from one `.deploy.env`.
+`FTP_USER_BACKEND`/`FTP_PASS_BACKEND` override `FTP_USER`/`FTP_PASS` for this
+script only, which matters here: the website's upload keeps working with its
+docroot-jailed account while the backend goes up through the other login, from
+one `.deploy.env`.
 
 Two things trip people up here: a **530** means the password was the FTP
-sub-account's rather than the cPanel one, and with this login
-`FTP_REMOTE_DIR=public_html` for the static upload (its `/` is the home
-directory, where the docroot is one level down) - which is the other reason to
-split the two logins.
-
-Check what a login can reach before spending time on the upload:
-
-```bash
-curl --ssl-reqd --list-only ftp://dahost11.vpslocal.co.za/ --user 'user:pass'
-```
-
-A jailed account lists only its own folder; the primary one lists the home
-directory, `invigismart-api` included. If neither does, use route B - it needs
-no credentials at all.
+sub-account's rather than the panel's, and a **550 on the target directory**
+means the jail is wrong, not the password. `--probe` prints both listings (the
+login's root and the target), so the two never look alike. If no login can see
+the app root, use route B - it needs no credentials at all.
 
 **B. File Manager, no FTP at all.**
 

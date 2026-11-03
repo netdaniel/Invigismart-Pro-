@@ -49,12 +49,19 @@ state and secrets, and the server has its own.
 second FTP account: upload the archive in **File Manager** and **Extract** it in
 the application root. No credentials are needed for that mode at all.
 
-If you would rather use FTP, the one account a single-account plan allows is
-jailed to the docroot and cannot see the application root, which sits beside it.
-The primary cPanel login (`FTP_USER_BACKEND=shfckyzk` +
-`FTP_PASS_BACKEND=<cPanel password>`, `BACKEND_REMOTE_DIR=invigismart-api`) is not
-counted among the plan's FTP accounts and reaches the home directory; the
-`*_BACKEND` names keep `upload-static.sh` on the account that already works.
+If you would rather use FTP, the login has to be jailed somewhere that contains
+the application root, and an FTP jail is fixed by the Path the account was
+created with: the website's account sits in the docroot, and
+`admin@invigismart.online` in `/home/shfckyzk/domains/invigismart.online`, so
+neither can see `/home/shfckyzk/invigismart-api` - it is a sibling of
+`domains/`, one branch over. Either point that account's Path at the app root
+(then `BACKEND_REMOTE_DIR=/`) or use the primary DirectAdmin login
+(`FTP_USER_BACKEND=shfckyzk` + `FTP_PASS_BACKEND=<panel password>`,
+`BACKEND_REMOTE_DIR=invigismart-api`), which is not counted among the plan's FTP
+accounts and reaches the home directory; the `*_BACKEND` names keep
+`upload-static.sh` on the account that already works.
+`./deploy/upload-passenger.sh --probe` prints what a login can actually see
+before anything is uploaded.
 
 `make-api-env.py` writes the production `.env` for that app root -
 `deploy/invigismart-api.env`, gitignored, upload it and **Rename** it to `.env`.

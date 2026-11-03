@@ -17,6 +17,7 @@
 #   ./deploy/upload-passenger.sh --apply          # upload
 #   ./deploy/upload-passenger.sh --apply --verify # upload, then check /api/health
 #   ./deploy/upload-passenger.sh --zip            # no FTP: build a File Manager zip
+#   ./deploy/upload-passenger.sh --probe          # list what this login can see
 #
 # Credentials come from .deploy.env (gitignored) or the environment. FTP is not
 # the only way up: many cPanel plans allow a single FTP account, so --zip builds
@@ -29,11 +30,13 @@ cd "$(dirname "$0")/.."
 APPLY=0
 VERIFY=0
 ZIP=0
+PROBE=0
 for arg in "$@"; do
   case "$arg" in
     --apply)   APPLY=1 ;;
     --verify)  VERIFY=1 ;;
     --zip)     ZIP=1 ;;
+    --probe)   PROBE=1 ;;
     -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -45,14 +48,18 @@ if [ -f .deploy.env ]; then
 fi
 
 FTP_HOST="${FTP_HOST:-dahost11.vpslocal.co.za}"
-# The backend login can differ from the website's: a plan that allows a single
-# FTP account keeps that one jailed to the docroot, while the primary cPanel
-# login (username = cPanel user, no @domain) reaches the whole home directory
-# and is not counted against the quota. FTP_USER_BACKEND/FTP_PASS_BACKEND let
-# both live in one .deploy.env without disturbing the static upload.
+# The backend login can differ from the website's: the account the static
+# upload uses is jailed to the docroot, while the primary panel login (username
+# = panel user, no @domain) reaches the whole home directory and is not counted
+# against the plan's FTP accounts. FTP_USER_BACKEND/FTP_PASS_BACKEND let both
+# live in one .deploy.env without disturbing the static upload.
 FTP_USER="${FTP_USER_BACKEND:-${FTP_USER:-}}"
 FTP_PASS="${FTP_PASS_BACKEND:-${FTP_PASS:-}}"
 # The application root created in "Setup Python App", below the FTP login root.
+# A login jailed straight *to* the app root (DirectAdmin -> FTP Management ->
+# the account's Path) uses "/" here; one that starts in the home directory uses
+# "invigismart-api". See DEPLOY.md 13.1: a login jailed to the docroot or to the
+# domain directory cannot see the app root at all, whatever this is set to.
 FTP_REMOTE_DIR="${BACKEND_REMOTE_DIR:-invigismart-api}"
 FTP_INSECURE="${FTP_INSECURE:-0}"
 API_HOST="${API_HOST:-api.invigismart.online}"
@@ -60,14 +67,18 @@ API_HOST="${API_HOST:-api.invigismart.online}"
 case "$FTP_REMOTE_DIR" in
   *" "*|*:*)
     echo "BACKEND_REMOTE_DIR is not a path: '$FTP_REMOTE_DIR'" >&2
-    echo "Use the application root cPanel created, e.g. invigismart-api" >&2
+    echo "Use the application root the panel created, e.g. invigismart-api" >&2
+    echo "or / when the FTP account is already jailed to that root" >&2
     exit 1
     ;;
 esac
 
+# Normalise so the upload URL never contains "//": "/" is how you say "the login
+# root itself", and naively pasting it onto the host gave ftp://host//, which
+# Pure-FTPd answers with "550 Can't change directory to //".
 REMOTE_PATH="${FTP_REMOTE_DIR#/}"
 REMOTE_PATH="${REMOTE_PATH%/}"
-REMOTE_URL="ftp://$FTP_HOST/$REMOTE_PATH/"
+REMOTE_URL="ftp://$FTP_HOST/${REMOTE_PATH:+$REMOTE_PATH/}"
 
 # What runs. server/tests, server/uploads, the SQLite file and .env are not here
 # on purpose: the first two are development-only, the last two are local state
@@ -107,6 +118,59 @@ print_files() {
   done
 }
 
+CURL_OPTS=(--ssl-reqd --fail --silent --show-error
+           --connect-timeout 20 --max-time 180 --ftp-create-dirs)
+PROBE_OPTS=(--ssl-reqd --silent --show-error --connect-timeout 20 --max-time 60)
+if [ "$FTP_INSECURE" = "1" ]; then
+  CURL_OPTS+=(-k); PROBE_OPTS+=(-k)
+  echo "warning: TLS verification disabled (FTP_INSECURE=1)" >&2
+fi
+
+need_credentials() {
+  if [ -z "$FTP_USER" ] || [ -z "$FTP_PASS" ]; then
+    echo "FTP_USER / FTP_PASS are not set." >&2
+    echo "Copy deploy/.deploy.env.example to .deploy.env and fill it in" >&2
+    echo "(FTP_USER_BACKEND / FTP_PASS_BACKEND override them for this script)." >&2
+    return 1
+  fi
+}
+
+# --probe: read-only, one connection's worth of questions. An FTP account's jail
+# is fixed by the "Path" field in DirectAdmin and cannot be escaped upwards -
+# ".." stays at the root and /home/<user>/... outside it is "No such file or
+# directory" - so a login jailed to the docroot or to the domain directory can
+# never see the app root that sits beside them. This prints what the login can
+# actually reach, which is the difference between a wrong password and a wrong
+# path (both come back as a failed preflight otherwise).
+probe_login() {
+  echo "login     : $FTP_USER"
+  echo "target    : $REMOTE_URL"
+  echo
+  echo "the login's root (ftp://$FTP_HOST/):"
+  curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "ftp://$FTP_HOST/" \
+    || { echo "  the login cannot list its own root (wrong password?)" >&2; return 1; }
+  echo
+  if [ -n "$REMOTE_PATH" ]; then
+    echo "the target directory ($REMOTE_URL):"
+    curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "$REMOTE_URL" \
+      || { echo "  the login cannot see $REMOTE_PATH" >&2; return 1; }
+    echo
+  fi
+  cat <<'TXT'
+The root listing should show passenger_wsgi.py and server/. If it shows
+domains/, public_html/ or the website's own pages, this account is jailed
+somewhere the app root is not: in DirectAdmin, FTP Management -> the account ->
+Path, set the app root and use BACKEND_REMOTE_DIR=/, or skip FTP entirely with
+--zip plus File Manager (DEPLOY.md 13.1/13.2 route B).
+TXT
+}
+
+if [ "$PROBE" -eq 1 ]; then
+  need_credentials || exit 1
+  probe_login
+  exit 0
+fi
+
 # File Manager route: the same list, in one archive, for hosts that only give
 # you one FTP account (or none you can point at the application root).
 if [ "$ZIP" -eq 1 ]; then
@@ -133,7 +197,7 @@ PY
   cat <<'TXT'
 
 Upload it without FTP:
-  1. cPanel -> File Manager -> the application root (invigismart-api).
+  1. File Manager -> the application root (invigismart-api, in the home directory).
   2. Upload -> choose deploy/invigismart-api.zip -> Reload.
   3. Tick the zip -> Extract -> Extract Files. The app root path is prefilled;
      keep it, so server/ and assets/ land in the right place. Delete the zip.
@@ -198,32 +262,25 @@ if [ "$APPLY" -eq 0 ]; then
   exit 0
 fi
 
-if [ -z "$FTP_USER" ] || [ -z "$FTP_PASS" ]; then
-  echo "FTP_USER / FTP_PASS are not set." >&2
-  echo "Copy deploy/.deploy.env.example to .deploy.env and fill it in" >&2
-  echo "(FTP_USER_BACKEND / FTP_PASS_BACKEND override them for this script)." >&2
-  exit 1
-fi
-
-CURL_OPTS=(--ssl-reqd --fail --silent --show-error
-           --connect-timeout 20 --max-time 180 --ftp-create-dirs)
-PROBE_OPTS=(--ssl-reqd --silent --show-error --connect-timeout 20 --max-time 60)
-if [ "$FTP_INSECURE" = "1" ]; then
-  CURL_OPTS+=(-k); PROBE_OPTS+=(-k)
-  echo "warning: TLS verification disabled (FTP_INSECURE=1)" >&2
-fi
+need_credentials || exit 1
 
 echo "checking login and remote directory..."
 if ! curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "$REMOTE_URL" >/dev/null 2>&1; then
   echo "FTP preflight failed for $REMOTE_URL" >&2
   echo "Either the login is wrong, or this account cannot see $REMOTE_PATH." >&2
-  echo "  - the account may be jailed to public_html; the app root sits beside it" >&2
+  echo "  - run ./deploy/upload-passenger.sh --probe to see what it *can* see" >&2
+  echo "  - an FTP account is jailed to the Path it was created with, and cannot" >&2
+  echo "    go up: the docroot and the domain directory are both wrong places for" >&2
+  echo "    this upload. Set the account's Path to the app root (DirectAdmin ->" >&2
+  echo "    FTP Management) and use BACKEND_REMOTE_DIR=/, or give it the home" >&2
+  echo "    directory and leave BACKEND_REMOTE_DIR=invigismart-api" >&2
   echo "  - the app root may not exist yet: create the application first" >&2
-  echo "  - the primary cPanel login can always write the whole home directory:" >&2
+  echo "  - the primary cPanel login reaches the whole home directory and is not" >&2
+  echo "    counted among the plan's FTP accounts:" >&2
   echo "      FTP_USER_BACKEND=shfckyzk  FTP_PASS_BACKEND=<cPanel password>" >&2
   echo "    (no @domain in the username; a 530 means the password is the FTP" >&2
   echo "     account's, not the cPanel one)" >&2
-  echo "No second FTP account? ./deploy/upload-passenger.sh --zip, then File" >&2
+  echo "No usable login? ./deploy/upload-passenger.sh --zip, then File" >&2
   echo "Manager -> Upload -> Extract (DEPLOY.md 13.2)." >&2
   exit 1
 fi
