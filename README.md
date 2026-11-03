@@ -14,10 +14,11 @@ has lapsed.
 The site is split into two pages served by the same process:
 
 * `landing.html` at **`/`** - the marketing page: what the tool does, the
-  benefits, how it works, a step-by-step walkthrough of every dashboard tab,
-  the plan and its price, an FAQ, and the three ways in
-  (**register for the free trial**, **buy the annual licence**, or **log in** for
-  existing paying customers).
+  benefits, a click-to-load product tour video (YouTube's no-cookie player, only
+  fetched once the visitor presses play), how it works, a step-by-step
+  walkthrough of every dashboard tab, the plan and its price, an FAQ, and the
+  three ways in (**register for the free trial**, **buy the annual licence**, or
+  **log in** for existing paying customers).
 * `index.html` at **`/app`** - the dashboard itself (teachers, schedules, exam
   timetable, roster generator, teacher duty sheets, the PDF document library and
   billing).

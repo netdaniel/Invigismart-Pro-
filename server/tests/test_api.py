@@ -1378,6 +1378,43 @@ class FrontEndTests(unittest.TestCase):
         self.assertIn('id="authTerms"', html)
         self.assertIn("Please accept the Terms", html)
 
+    def test_landing_page_embeds_the_tour_video_click_to_load(self):
+        # The tour video must not cost the page a third-party request or a
+        # YouTube cookie before the visitor asks for it: the markup carries a
+        # poster and a play button, and the player (from the no-cookie host) is
+        # only injected by playTourVideo() on press.
+        status, html = request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn('id="tour"', html)
+        self.assertIn('href="#tour"', html)              # reachable from the hero
+        self.assertIn('id="tourVideo"', html)
+        self.assertIn("https://i.ytimg.com/vi/pNCRwoH_0EQ/maxresdefault.jpg", html)
+        self.assertIn("playTourVideo()", html)
+        self.assertIn("youtube-nocookie.com/embed/pNCRwoH_0EQ", html)
+        self.assertIn("Welcome to Invigismart Pro", html)  # the player's title
+        self.assertNotIn("<iframe", html)                 # nothing loads on its own
+        self.assertNotIn("www.youtube.com/embed", html)   # never the cookie host
+
+    def test_static_host_route_table_matches_the_flask_app(self):
+        # The FTP deployment publishes plain files, so .htaccess is the only
+        # router there. It used to leave DirectoryIndex at index.html, which put
+        # the dashboard at https://invigismart.online/ while this app (and the
+        # README) serve the marketing page there; the tour video on landing.html
+        # was therefore unreachable from the site root. Pin the table so the two
+        # deployments cannot drift apart again.
+        with open(os.path.join(os.path.dirname(SERVER_DIR), ".htaccess")) as handle:
+            rules = handle.read()
+        self.assertIn("DirectoryIndex landing.html", rules)
+        self.assertNotIn("DirectoryIndex index.html", rules)
+        for rule in (
+            r"RewriteRule ^app/?$ index.html [L]",
+            r"RewriteRule ^login/?$ landing.html [L]",
+            r"RewriteRule ^signup/?$ landing.html [L]",
+            r"RewriteRule ^terms/?$ terms.html [L]",
+            r"RewriteRule ^privacy/?$ privacy.html [L]",
+        ):
+            self.assertIn(rule, rules, rule)
+
     def test_landing_page_walkthrough_covers_every_dashboard_tab(self):
         # The walkthrough is the self-service onboarding path, so it has to name
         # the real dashboard tabs, in the order a school meets them, and quote

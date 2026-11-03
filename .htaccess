@@ -9,7 +9,11 @@
 # every directive is wrapped so a host without mod_rewrite still serves the
 # pages normally.
 
-DirectoryIndex index.html
+# The marketing page is the site root, exactly as the Flask app serves it
+# (README: "landing.html at /"). It used to be index.html, which put the
+# dashboard at https://invigismart.online/ and made the marketing page - and the
+# tour video on it - unreachable except by typing /landing.html.
+DirectoryIndex landing.html
 
 <IfModule mod_rewrite.c>
   RewriteEngine On

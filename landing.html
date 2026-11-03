@@ -153,9 +153,15 @@
           </button>
         </div>
 
-        <p class="mt-4 text-xs text-slate-500">
-          Already a customer?
-          <a href="/login" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">Log in to your dashboard</a>.
+        <p class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-500">
+          <a href="#tour" class="inline-flex items-center gap-1.5 font-semibold text-indigo-700 hover:text-indigo-900">
+            <i data-lucide="play-circle" class="w-4 h-4"></i> Watch the tour
+          </a>
+          <span class="hidden sm:inline text-slate-300">|</span>
+          <span>
+            Already a customer?
+            <a href="/login" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">Log in to your dashboard</a>.
+          </span>
         </p>
 
         <ul class="mt-8 grid sm:grid-cols-2 gap-y-2.5 gap-x-6 text-sm text-slate-600">
@@ -235,6 +241,49 @@
         </div>
         <p class="mt-3 text-center text-xs text-slate-400">Example output. You bring the timetable &mdash; the server builds the roster.</p>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== PRODUCT TOUR (VIDEO) ===================== -->
+  <section id="tour" class="bg-white pb-16 lg:pb-20">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-2xl mx-auto text-center">
+        <span class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-600">
+          <i data-lucide="play-circle" class="w-4 h-4"></i> Watch the tour
+        </span>
+        <h2 class="mt-3 text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+          The whole workflow, on screen
+        </h2>
+        <p class="mt-4 text-lg text-slate-600">
+          Prefer watching to reading? Here is Invigismart Pro in use. The written
+          <a href="#walkthrough" class="font-semibold text-indigo-600 hover:text-indigo-800 underline">walkthrough</a>
+          underneath covers the same screens step by step.
+        </p>
+      </div>
+
+      <!-- Click-to-load: the poster is the only thing fetched up front, and the
+           player is only injected (from youtube-nocookie.com) on press. -->
+      <div id="tourVideo" class="relative mt-8 aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-navy-950 shadow-xl shadow-slate-300/40">
+        <img src="https://i.ytimg.com/vi/pNCRwoH_0EQ/maxresdefault.jpg"
+             onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/pNCRwoH_0EQ/hqdefault.jpg';"
+             alt="" aria-hidden="true" loading="lazy" width="1280" height="720"
+             class="absolute inset-0 w-full h-full object-cover opacity-90">
+        <div class="absolute inset-0 pointer-events-none bg-gradient-to-t from-navy-950/70 via-navy-950/10 to-transparent"></div>
+        <button type="button" onclick="playTourVideo()"
+                class="group absolute inset-0 flex flex-col items-center justify-center gap-3 text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-white/60"
+                aria-label="Play the Invigismart Pro tour video (loads the player from YouTube)">
+          <span class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/95 text-indigo-600 shadow-2xl flex items-center justify-center transition group-hover:scale-105 group-hover:bg-white">
+            <i data-lucide="play" class="w-7 h-7 sm:w-8 sm:h-8 translate-x-0.5"></i>
+          </span>
+          <span class="text-xs font-semibold uppercase tracking-widest text-white/90">Play the tour</span>
+        </button>
+      </div>
+
+      <p class="mt-3 text-center text-xs text-slate-400">
+        Nothing is requested from YouTube until you press play, and the player is the
+        privacy-enhanced embed. See our
+        <a href="/privacy" class="font-semibold text-slate-500 hover:text-indigo-600 underline">Privacy Policy</a>.
+      </p>
     </div>
   </section>
 
@@ -1155,6 +1204,30 @@
     }
     function dismissNotice() {
       document.getElementById('noticeBar').classList.add('hidden');
+    }
+
+    /* ---- product tour: click-to-load, so the page stays third-party free ----
+       The poster in #tourVideo is the only thing fetched up front. On press the
+       facade is replaced by the real player, from the no-cookie host, with
+       autoplay (a click counts as the user gesture browsers ask for) and rel=0
+       so the end screen stays on this channel. */
+    function playTourVideo() {
+      var box = document.getElementById('tourVideo');
+      if (!box) return;
+      var frame = document.createElement('iframe');
+      frame.className = 'absolute inset-0 w-full h-full';
+      frame.src = 'https://www.youtube-nocookie.com/embed/pNCRwoH_0EQ' +
+        '?autoplay=1&rel=0&playsinline=1';
+      frame.title = 'Welcome to Invigismart Pro';
+      frame.setAttribute('frameborder', '0');
+      frame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      frame.setAttribute('allowfullscreen', '');
+      box.innerHTML = '';
+      box.appendChild(frame);
+      // Keyboard users pressed a button that has just been removed; keep focus
+      // moving through the page instead of dropping it to <body>.
+      if (frame.focus) frame.focus();
     }
 
     /* ---- plan copy comes from the server (single source of truth) ---- */
