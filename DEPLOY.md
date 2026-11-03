@@ -1110,3 +1110,63 @@ Next practical steps, in order: add the password-reset flow, then `robots.txt` +
 monitoring tool that hits `/api/health` and alerts if `billingConfigured` flips
 to `false`, `payfastSandbox` flips to `true`, or the service exits.
 
+## 14. Who is using the product (the owner report)
+
+The database has always known who *signed up* and who *paid*. It did not know who
+was *using* the dashboard, so there is one owner-only endpoint for that:
+
+```
+GET /api/admin/overview
+```
+
+It is **off unless `ADMIN_TOKEN` is set**, and any value shorter than 24
+characters counts as unset, so it cannot be guessed. While it is off the path
+answers `404`, exactly like an endpoint that does not exist.
+
+```bash
+# The header is the documented way in (the value is in the app root's .env)
+curl -sS https://invigismart.online/api/admin/overview \
+     -H "X-Admin-Token: $ADMIN_TOKEN" | python3 -m json.tool
+```
+
+A browser can open `…/api/admin/overview?token=<ADMIN_TOKEN>` instead, but a
+query string ends up in the address bar and the access log, so prefer the header
+for anything scripted.
+
+What comes back:
+
+| Field | Meaning |
+| --- | --- |
+| `totals.schools` | every account, ever |
+| `totals.trialing` / `.active` / `.expired` | licence state *now*, from `billing.entitlement()` - the same call `/api/me` makes |
+| `totals.recentlySeen` | accounts with an authenticated request in the last 30 days |
+| `totals.newSchools` | sign-ups in the last 30 days |
+| `totals.revenue` / `.paidPayments` | money taken, summed as decimals from `payments` |
+| `totals.documents` | uploaded PDFs |
+| `schools[]` | newest activity first: `school`, `email`, `createdAt`, `trialEndsAt`, `lastLoginAt`, `lastSeenAt`, `entitled`, `plan`, `status`, `source`, `daysLeft`, `documents`, `payments`, `lastPaymentAt` |
+
+`?limit=N` trims `schools` (default 50, max 200); the totals always cover every
+account. `lastLoginAt` moves only on a *successful* sign-in - a failed attempt is
+not activity - and `lastSeenAt` moves on any authenticated request, written at
+most once per account per `LAST_SEEN_INTERVAL` seconds (default 60) so a polling
+dashboard cannot turn every read into a database write.
+
+Refusals are logged, because a run of them is the only signal that someone is
+trying tokens against the customer list:
+
+```
+[admin] overview denied for 203.0.113.9
+```
+
+Notes:
+
+* Rotate by editing `ADMIN_TOKEN` in the app root's `.env` and touching
+  `tmp/restart.txt`. That signs **nobody** out, unlike `JWT_SECRET`.
+* Only ever call it over `https`: the token travels in a header or query string.
+* The two columns are added to `users` automatically on first boot
+  (`Store._migrate`). Accounts created before this build show `null` until their
+  next sign-in, which starts populating both.
+* This is a report, not a console: it never writes and never changes a licence.
+  There is still no admin UI and no password reset - fixing a locked-out school
+  is still a `subscriptions`/`users` edit (§10, "Replaying a notification").
+

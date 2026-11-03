@@ -9,6 +9,11 @@ import secrets
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 
+# Shortest ADMIN_TOKEN that switches the owner report on. It is the only secret
+# in the system a human types, so the bar is "cannot be guessed from the outside",
+# not "8 characters like a password".
+MIN_ADMIN_TOKEN_LENGTH = 24
+
 
 def _env_bool(name, default=False, env=None):
     raw = (env if env is not None else os.environ).get(name)
@@ -183,6 +188,23 @@ class Config:
             if self.support_phone_dial else ""
         )
 
+        # --- owner report --------------------------------------------------------
+        # GET /api/admin/overview is the only endpoint that lists schools, their
+        # licence state and their last activity, and it hands out every customer's
+        # email address. It is therefore off unless ADMIN_TOKEN is set, and a
+        # token short enough to guess counts as unset rather than being quietly
+        # accepted: an attacker who finds this endpoint must not be able to brute
+        # force their way into the customer list.
+        self.admin_token = (env.get("ADMIN_TOKEN", "") or "").strip()
+        self.admin_token_too_short = (
+            bool(self.admin_token) and len(self.admin_token) < MIN_ADMIN_TOKEN_LENGTH
+        )
+        self.admin_overview_enabled = bool(self.admin_token) and not self.admin_token_too_short
+        # Seconds between last_seen_at writes for one account. The default keeps a
+        # dashboard that polls from turning every read into a database write; 0
+        # records every authenticated request (used by the tests).
+        self.last_seen_interval = max(0, _env_int("LAST_SEEN_INTERVAL", 60, env))
+
         # --- production safety review ------------------------------------------
         # A public https host is treated as a production deployment and is held to
         # two rules. Both guard a *silent* failure: the school pays and nothing
@@ -323,6 +345,9 @@ class Config:
             "publicHost": self.public_host,
             "billingWarnings": list(self.billing_warnings),
             "ephemeralJwtSecret": self.jwt_secret_is_ephemeral,
+            # Whether the owner report answers at all. It says nothing about the
+            # token itself, only that the endpoint is switched on.
+            "adminOverview": self.admin_overview_enabled,
             "planName": self.plan_name,
             "planPrice": self.plan_price_display,
             "trialDays": self.trial_days,

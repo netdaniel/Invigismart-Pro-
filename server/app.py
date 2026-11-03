@@ -15,6 +15,7 @@ Standard library only. Run with:
     python3 server/app.py          # app + API on http://127.0.0.1:8000
 """
 import datetime
+import hmac
 import json
 import os
 import re
@@ -33,7 +34,7 @@ import examtypes
 import payfast
 import roster
 import security
-from config import Config
+from config import Config, MIN_ADMIN_TOKEN_LENGTH
 from db import Store
 
 CONFIG = Config()
@@ -86,7 +87,9 @@ class Handler(BaseHTTPRequestHandler):
     # ---- response helpers --------------------------------------------------
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header(
+            "Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token"
+        )
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send(self, status, body, content_type, extra_headers=None):
@@ -132,7 +135,14 @@ class Handler(BaseHTTPRequestHandler):
         claims = security.decode_jwt(header[7:].strip(), CONFIG.jwt_secret)
         if not claims:
             return None
-        return STORE.get_user_by_id(claims.get("sub"))
+        user = STORE.get_user_by_id(claims.get("sub"))
+        if user:
+            # "Who is using the application?" is answered from last_seen_at, so
+            # every authenticated request refreshes it. The store throttles the
+            # write itself (once per account per LAST_SEEN_INTERVAL seconds), so a
+            # polling dashboard cannot turn reads into a write storm.
+            STORE.touch_last_seen(user["id"], CONFIG.last_seen_interval)
+        return user
 
     def _require_user(self):
         user = self._current_user()
@@ -171,6 +181,9 @@ class Handler(BaseHTTPRequestHandler):
             billing.utcnow() + datetime.timedelta(days=CONFIG.trial_days)
         )
         user = STORE.create_user(school, email, security.hash_password(password), trial_end)
+        # Signing up signs you in, so the first activity stamp is now - an account
+        # created a second ago should not look abandoned in the owner report.
+        STORE.mark_login(user["id"])
         self._json(201, self._session_payload(user))
 
     def _api_login(self, body):
@@ -179,7 +192,101 @@ class Handler(BaseHTTPRequestHandler):
         user = STORE.get_user_by_email(email)
         if not user or not security.verify_password(password, user.get("pw_hash")):
             raise ApiError(401, "Invalid email or password.")
+        # Only a successful sign-in is recorded: a failed attempt says nothing
+        # about who is using the product, and the IP is already in the access log.
+        STORE.mark_login(user["id"])
         self._json(200, self._session_payload(user))
+
+    # ---- owner report ------------------------------------------------------
+    def _admin_token_from_request(self, query):
+        """The admin token supplied with a request.
+
+        The header is what a script should use. ``?token=`` exists so the report
+        can be opened in a browser without any tooling, and is only tolerable
+        because the token is long and random - but a query string is written to
+        the access log and the browser's history, so it is the fallback, not the
+        preferred way in.
+        """
+        header = (self.headers.get("X-Admin-Token") or "").strip()
+        if header:
+            return header
+        return (parse_qs(query or "").get("token", [""])[0] or "").strip()
+
+    def _require_admin(self, query):
+        if not CONFIG.admin_overview_enabled:
+            # 404, not 403: an endpoint that is switched off should not advertise
+            # that it exists, or that some token would open it.
+            raise ApiError(404, "Unknown endpoint.")
+        supplied = self._admin_token_from_request(query)
+        # compare_digest keeps the comparison independent of how many leading
+        # characters of the token were right.
+        if not supplied or not hmac.compare_digest(supplied, CONFIG.admin_token):
+            # Refusals are logged: a run of them is the only signal that someone
+            # is trying tokens against the customer list.
+            sys.stderr.write("[admin] overview denied for %s\n" % self.address_string())
+            raise ApiError(
+                401, "A valid admin token is required.", code="admin_unauthorized"
+            )
+
+    def _api_admin_overview(self, query):
+        """Answer "who is using this?": every school, its licence, its last activity.
+
+        Totals cover every account; ``schools`` is the first ``limit`` of them,
+        newest activity first, so the page an operator reads can stay small while
+        the headline numbers still describe the whole book.
+        """
+        self._require_admin(query)
+        limit = 50
+        raw_limit = (parse_qs(query or "").get("limit", [""])[0] or "").strip()
+        if raw_limit:
+            if not raw_limit.isdigit():
+                raise ApiError(400, "limit must be a whole number.")
+            limit = max(1, min(int(raw_limit), 200))
+
+        schools = []
+        for row in STORE.usage_overview():
+            # The same call /api/me and roster generation make, so the report can
+            # never disagree with what the school itself is shown.
+            licence = billing.entitlement(
+                STORE, {"id": row["id"], "trial_ends_at": row["trial_ends_at"]}, CONFIG
+            )
+            schools.append(
+                {
+                    "id": row["id"],
+                    "school": row["school"],
+                    "email": row["email"],
+                    "createdAt": row["created_at"],
+                    "trialEndsAt": row["trial_ends_at"],
+                    "lastLoginAt": row["last_login_at"],
+                    "lastSeenAt": row["last_seen_at"],
+                    "entitled": licence["entitled"],
+                    "plan": licence["plan"],
+                    "status": licence["status"],
+                    "source": licence["source"],
+                    "daysLeft": licence["daysLeft"],
+                    "currentPeriodEnd": licence["currentPeriodEnd"],
+                    "provider": row["provider"],
+                    "documents": int(row["document_count"] or 0),
+                    "payments": int(row["payment_count"] or 0),
+                    "lastPaymentAt": row["last_payment_at"],
+                }
+            )
+
+        totals = STORE.usage_totals()
+        totals["active"] = sum(1 for item in schools if item["source"] == "subscription")
+        totals["trialing"] = sum(1 for item in schools if item["source"] == "trial")
+        totals["expired"] = sum(1 for item in schools if not item["entitled"])
+        self._json(
+            200,
+            {
+                "ok": True,
+                "time": billing.to_iso(billing.utcnow()),
+                "totals": totals,
+                "returned": min(limit, len(schools)),
+                "limit": limit,
+                "schools": schools[:limit],
+            },
+        )
 
     def _api_checkout(self, user, body):
         try:
@@ -630,6 +737,10 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/events":
                 self._require_user()
                 self._json(200, {"events": STORE.list_events(50)})
+            elif path == "/api/admin/overview":
+                # Owner-only: 404 unless ADMIN_TOKEN is configured, 401 + a log
+                # line for a wrong or missing token.
+                self._api_admin_overview(parsed.query)
             elif path == "/api/billing/summary":
                 self._api_billing_summary(self._require_user())
             elif path == "/api/documents":
@@ -879,6 +990,16 @@ def startup_banner(host, port):
             "configured" if CONFIG.stripe_webhook_secret else "NOT configured"
         ),
         "  mock billing    : %s" % ("enabled" if CONFIG.allow_mock_billing else "disabled"),
+        "  owner report    : %s" % (
+            "GET /api/admin/overview (ADMIN_TOKEN set)"
+            if CONFIG.admin_overview_enabled
+            else (
+                "off (ADMIN_TOKEN is shorter than %d characters)"
+                % MIN_ADMIN_TOKEN_LENGTH
+                if CONFIG.admin_token_too_short
+                else "off (set ADMIN_TOKEN to enable)"
+            )
+        ),
     ]
     if CONFIG.billing_provider == "payfast":
         lines.append("  itn verification: %s" % CONFIG.payfast_itn_verification)

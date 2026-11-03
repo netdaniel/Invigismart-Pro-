@@ -10,6 +10,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from decimal import Decimal, InvalidOperation
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -18,7 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
   email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
   pw_hash       TEXT NOT NULL,
   created_at    TEXT NOT NULL,
-  trial_ends_at TEXT
+  trial_ends_at TEXT,
+  last_login_at TEXT,
+  last_seen_at  TEXT
 );
 CREATE TABLE IF NOT EXISTS subscriptions (
   user_id                TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -81,6 +84,12 @@ class Store:
             os.makedirs(parent, exist_ok=True)
         self._local = threading.local()
         self._write_lock = threading.RLock()
+        # Last-seen stamps are the only write that happens on every signed-in
+        # request, so they are throttled per account in memory. Guarding them
+        # with their own lock keeps a read-only request from queuing behind a
+        # write it does not need to make.
+        self._seen_lock = threading.Lock()
+        self._seen_stamps = {}
         self._conn().executescript(SCHEMA)
         self._migrate()
 
@@ -93,6 +102,10 @@ class Store:
         place - otherwise the first paying school's renewal would fail.
         """
         self._ensure_column("subscriptions", "provider", "TEXT")
+        # Who is actually using the dashboard. Older databases have neither
+        # column; both stay NULL until the account next signs in.
+        self._ensure_column("users", "last_login_at", "TEXT")
+        self._ensure_column("users", "last_seen_at", "TEXT")
 
     def _ensure_column(self, table, column, declaration):
         existing = [row[1] for row in self._conn().execute("PRAGMA table_info(%s)" % table)]
@@ -168,6 +181,47 @@ class Store:
                 "UPDATE users SET pw_hash = ? WHERE id = ?", (pw_hash, user_id)
             )
             self._conn().commit()
+
+    # -- "who is actually using it" -------------------------------------------
+    def mark_login(self, user_id):
+        """Record a successful sign-in: last_login_at and last_seen_at move together.
+
+        Signing in is both an arrival and an activity, so one timestamp would do -
+        but the owner report sorts on last_seen_at, and a fresh login must sort to
+        the top even if the account never loads another page.
+        """
+        stamp = utcnow_iso()
+        with self._write_lock:
+            self._conn().execute(
+                "UPDATE users SET last_login_at = ?, last_seen_at = ? WHERE id = ?",
+                (stamp, stamp, user_id),
+            )
+            self._conn().commit()
+        with self._seen_lock:
+            self._seen_stamps[user_id] = time.time()
+        return stamp
+
+    def touch_last_seen(self, user_id, min_interval=60):
+        """Stamp last_seen_at for a signed-in request, at most once per interval.
+
+        This runs on every authenticated request, so it writes to SQLite only when
+        the previous stamp is older than min_interval seconds (60 by default).
+        Without that throttle a dashboard that polls would turn every read into a
+        write and serialise the whole database behind it.
+        """
+        now = time.time()
+        with self._seen_lock:
+            previous = self._seen_stamps.get(user_id)
+            if previous is not None and 0 <= now - previous < min_interval:
+                return False
+            self._seen_stamps[user_id] = now
+        stamp = utcnow_iso()
+        with self._write_lock:
+            self._conn().execute(
+                "UPDATE users SET last_seen_at = ? WHERE id = ?", (stamp, user_id)
+            )
+            self._conn().commit()
+        return True
 
     # -- subscriptions -------------------------------------------------------
     def get_subscription(self, user_id):
@@ -322,6 +376,76 @@ class Store:
             (user_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # -- owner report (who is actually using the product) ---------------------
+    def usage_overview(self, limit=None):
+        """Every school with its licence state and its last activity.
+
+        The licence itself is *not* decided here: `billing.entitlement()` remains
+        the single source of truth, so this returns the raw columns plus the three
+        counters that are cheap to compute in SQL. ``limit=None`` means all rows,
+        which the owner report needs so its totals cover every account and not
+        just the page it prints.
+        """
+        sql = (
+            "SELECT u.id, u.school, u.email, u.created_at, u.trial_ends_at,"
+            "       u.last_login_at, u.last_seen_at, s.provider,"
+            "       (SELECT COUNT(*) FROM documents d WHERE d.user_id = u.id)"
+            "         AS document_count,"
+            "       (SELECT COUNT(*) FROM payments p WHERE p.user_id = u.id)"
+            "         AS payment_count,"
+            "       (SELECT MAX(p.created_at) FROM payments p WHERE p.user_id = u.id)"
+            "         AS last_payment_at"
+            "  FROM users u"
+            "  LEFT JOIN subscriptions s ON s.user_id = u.id"
+            " ORDER BY COALESCE(u.last_seen_at, u.last_login_at, u.created_at) DESC,"
+            "          u.created_at DESC"
+        )
+        if limit is None:
+            rows = self._conn().execute(sql).fetchall()
+        else:
+            rows = self._conn().execute(sql + " LIMIT ?", (max(0, int(limit)),)).fetchall()
+        return [dict(row) for row in rows]
+
+    def usage_totals(self, days=30):
+        """Headline counters: accounts, activity and money taken.
+
+        ``revenue`` is summed with Decimal from the stored amount strings: the
+        payments table keeps amounts as text, and adding money as a float would
+        drift by a cent exactly when the books are checked.
+        """
+        cutoff = time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - int(days) * 86400)
+        )
+        counts = self._conn().execute(
+            "SELECT (SELECT COUNT(*) FROM users) AS schools,"
+            "       (SELECT COUNT(*) FROM users WHERE created_at >= ?) AS new_schools,"
+            "       (SELECT COUNT(*) FROM users WHERE last_seen_at >= ?) AS recently_seen,"
+            "       (SELECT COUNT(*) FROM documents) AS documents,"
+            "       (SELECT COUNT(*) FROM payments) AS payments",
+            (cutoff, cutoff),
+        ).fetchone()
+        paid_statuses = ("COMPLETE", "PAID", "SUCCEEDED")
+        rows = self._conn().execute(
+            "SELECT amount FROM payments WHERE UPPER(status) IN (?, ?, ?)",
+            paid_statuses,
+        ).fetchall()
+        revenue = Decimal("0.00")
+        for row in rows:
+            try:
+                revenue += Decimal(str(row["amount"] or "0").strip() or "0")
+            except (InvalidOperation, ValueError):
+                continue
+        return {
+            "schools": int(counts["schools"]),
+            "newSchools": int(counts["new_schools"]),
+            "recentlySeen": int(counts["recently_seen"]),
+            "documents": int(counts["documents"]),
+            "payments": int(counts["payments"]),
+            "paidPayments": len(rows),
+            "revenue": "%.2f" % revenue,
+            "days": int(days),
+        }
 
     # -- uploaded documents (per-account PDF library) -------------------------
     def create_document(self, document_id, user_id, filename, title, category, size):

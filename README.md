@@ -255,6 +255,7 @@ same provenance line and a `Grade` column as `/api/roster/export`.
 | `POST` | `/api/documents` | Bearer | Upload one PDF (`multipart/form-data`: `file`, `title`, `category`) |
 | `GET` | `/api/documents/<id>` | Bearer | Stream one PDF inline (`?download=1` forces a download) |
 | `DELETE` | `/api/documents/<id>` | Bearer | Delete one PDF |
+| `GET` | `/api/admin/overview` | `X-Admin-Token` | Owner report: every school, licence state, last sign-in/activity. Off (404) unless `ADMIN_TOKEN` is set - see DEPLOY.md §14 |
 | `GET` | `/mock-checkout` | - | *(mock mode)* local mock checkout stand-in |
 
 `POST /api/roster/generate` accepts

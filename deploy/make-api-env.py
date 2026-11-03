@@ -48,7 +48,7 @@ DEFAULT_OUT = os.path.join(HERE, "invigismart-api.env")
 # same Passenger app (public_html/api), so the notification needs no certificate
 # of its own either.
 API_ORIGIN = "https://invigismart.online"
-SECRET_MARKERS = ("SECRET", "PASS", "KEY")
+SECRET_MARKERS = ("SECRET", "PASS", "KEY", "ADMIN_TOKEN")
 
 
 def read_env(path):
@@ -139,6 +139,15 @@ def build(source):
         "SUBSCRIPTION_DAYS=" + get("SUBSCRIPTION_DAYS", "365"),
         "SUPPORT_EMAIL=" + get("SUPPORT_EMAIL", "daniel@invigismart.online"),
         'SUPPORT_PHONE="%s"' % get("SUPPORT_PHONE", "+27 76 319 3749"),
+        "",
+        "# --- owner report " + "-" * 59,
+        "# GET /api/admin/overview answers \"who is using this?\": every school, its",
+        "# licence state, its last sign-in and its last authenticated request.",
+        "# Send the value as a header:  X-Admin-Token: <value>",
+        "# Blank disables the endpoint (it then answers 404), so this one value is",
+        "# what keeps the customer list private. Rotating it only locks you out of",
+        "# the report - no school is signed out, unlike JWT_SECRET.",
+        "ADMIN_TOKEN=" + (get("ADMIN_TOKEN") or secrets.token_urlsafe(32)),
     ]
     return "\n".join(lines) + "\n"
 

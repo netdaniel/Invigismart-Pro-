@@ -256,6 +256,9 @@ def setUpModule():
         "STRIPE_WEBHOOK_SECRET": WEBHOOK_SECRET,
         "ALLOW_MOCK_BILLING": "1",
         "TRIAL_DAYS": "14",
+        # Explicitly off, so a developer with ADMIN_TOKEN exported in their shell
+        # does not turn the shared test server into an owner-report server.
+        "ADMIN_TOKEN": "",
     })
     STDERR_LOG = open(os.path.join(TMP_DIR, "server.log"), "w+")
     PROCESS = subprocess.Popen(
@@ -2286,6 +2289,16 @@ ALLOW_MOCK_BILLING=0
         status, data = request("GET", "/api/nope", base=self.base)
         self.assertEqual(404, status)
         self.assertIn("error", data)
+        # The owner report travels the same bridge. Without ADMIN_TOKEN in this
+        # app's .env it must stay indistinguishable from an unknown path, even
+        # when a token is supplied - Passenger's routing is the one that matters.
+        status, data = request(
+            "GET",
+            "/api/admin/overview?token=" + ("t" * 40),
+            base=self.base,
+        )
+        self.assertEqual(404, status)
+        self.assertEqual("Unknown endpoint.", data["error"])
 
 
 class DeployArchiveTests(unittest.TestCase):
@@ -2436,12 +2449,15 @@ class ApiEnvTemplateTests(unittest.TestCase):
         self.assertEqual("10033543", env["PAYFAST_MERCHANT_ID"])
         # Holds the merchant key and the session secret until it is uploaded.
         self.assertEqual(0o600, mode)
+        # The owner report ships switched on, with a token nobody can guess.
+        self.assertGreaterEqual(len(env["ADMIN_TOKEN"]), config.MIN_ADMIN_TOKEN_LENGTH)
 
         conf = config.Config(env=env)
         self.assertTrue(conf.public_host)
         self.assertFalse(conf.jwt_secret_is_ephemeral)
         self.assertTrue(conf.billing_configured)
         self.assertFalse(conf.allow_mock_billing)
+        self.assertTrue(conf.admin_overview_enabled)
         self.assertEqual([], conf.billing_fatal)
         # Sandbox stays on until a purchase has worked end to end.
         self.assertTrue(conf.payfast_sandbox)
@@ -2497,6 +2513,245 @@ class ApiEnvTemplateTests(unittest.TestCase):
             patterns = [line.strip() for line in handle if line.strip()]
         self.assertIn("deploy/*.env", patterns)
 
+
+
+class AdminOverviewTests(unittest.TestCase):
+    """GET /api/admin/overview - the owner's "who is using this?" report.
+
+    The report hands out every school's email address, so these tests are as much
+    about staying shut as about the numbers: it does not exist without
+    ADMIN_TOKEN, it refuses a wrong token without leaking a row, and a token too
+    short to be unguessable is treated as unset rather than quietly accepted.
+    """
+
+    ADMIN_TOKEN = "t" * 40          # long enough for the length rule
+
+    def test_the_endpoint_does_not_exist_without_a_token(self):
+        # The shared server runs with ADMIN_TOKEN empty.
+        status, data = request("GET", "/api/admin/overview?token=whatever")
+        self.assertEqual(404, status)
+        self.assertEqual("Unknown endpoint.", data["error"])
+        status, health = request("GET", "/api/health")
+        self.assertEqual(200, status)
+        self.assertFalse(health["config"]["adminOverview"])
+
+    def test_a_guessable_token_is_treated_as_unset(self):
+        weak = config.Config(env={"ADMIN_TOKEN": "hunter2"})
+        self.assertTrue(weak.admin_token_too_short)
+        self.assertFalse(weak.admin_overview_enabled)
+
+        strong = config.Config(env={"ADMIN_TOKEN": self.ADMIN_TOKEN})
+        self.assertFalse(strong.admin_token_too_short)
+        self.assertTrue(strong.admin_overview_enabled)
+        # The token itself is never republished through /api/health.
+        self.assertNotIn(self.ADMIN_TOKEN, json.dumps(strong.describe()))
+
+    def test_a_short_token_leaves_the_report_off(self):
+        process, base, log = spawn_server({
+            **PAYFAST_PRODUCTION,
+            "ADMIN_TOKEN": "short-token",
+        })
+        try:
+            wait_healthy(base, process, log)
+            status, _ = request(
+                "GET", "/api/admin/overview?token=short-token", base=base
+            )
+            self.assertEqual(404, status)
+            status, health = request("GET", "/api/health", base=base)
+            self.assertFalse(health["config"]["adminOverview"])
+            # The operator sees why, instead of wondering why it 404s.
+            log.seek(0)
+            self.assertIn("ADMIN_TOKEN is shorter than", log.read())
+        finally:
+            stop_server(process, log)
+
+
+    def test_report_lists_schools_and_tracks_activity(self):
+        process, base, log = spawn_server({
+            **PAYFAST_PRODUCTION,
+            "ADMIN_TOKEN": self.ADMIN_TOKEN,
+            # Record every authenticated request, so the test does not have to
+            # wait a minute for the production throttle to expire.
+            "LAST_SEEN_INTERVAL": "0",
+        })
+        try:
+            wait_healthy(base, process, log)
+            status, health = request("GET", "/api/health", base=base)
+            self.assertEqual(200, status)
+            self.assertTrue(health["config"]["adminOverview"])
+
+            status, session = request(
+                "POST",
+                "/api/auth/signup",
+                {
+                    "school": "Admin Test High",
+                    "email": "owner@admintest.edu",
+                    "password": "secret123",
+                },
+                base=base,
+            )
+            self.assertEqual(201, status)
+            self.assertTrue(session["token"])
+
+            # No token and a wrong token are refused, and neither response
+            # carries a single school.
+            status, data = request("GET", "/api/admin/overview", base=base)
+            self.assertEqual(401, status)
+            self.assertEqual("admin_unauthorized", data["code"])
+            self.assertNotIn("schools", data)
+            status, data = request(
+                "GET", "/api/admin/overview?token=" + ("w" * 40), base=base
+            )
+            self.assertEqual(401, status)
+            self.assertNotIn("schools", data)
+
+            # The header is the documented way in.
+            status, report = request(
+                "GET",
+                "/api/admin/overview",
+                base=base,
+                extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            )
+            self.assertEqual(200, status)
+            self.assertEqual(1, report["totals"]["schools"])
+            self.assertEqual(1, report["totals"]["trialing"])
+            self.assertEqual(0, report["totals"]["active"])
+            self.assertEqual(1, report["totals"]["recentlySeen"])
+            self.assertEqual("0.00", report["totals"]["revenue"])
+            school = report["schools"][0]
+            self.assertEqual("Admin Test High", school["school"])
+            self.assertEqual("owner@admintest.edu", school["email"])
+            self.assertEqual("trial", school["source"])
+            self.assertTrue(school["entitled"])
+            self.assertEqual(0, school["documents"])
+            self.assertEqual(0, school["payments"])
+            # Signing up counts as a sign-in, so the account is not "never seen".
+            self.assertIsNotNone(school["lastLoginAt"])
+            self.assertEqual(school["lastLoginAt"], school["lastSeenAt"])
+            # Never the credential, not even here.
+            self.assertNotIn("pw_hash", json.dumps(report))
+
+            # ?token= works too, so the report opens in a browser.
+            status, again = request(
+                "GET", "/api/admin/overview?token=" + self.ADMIN_TOKEN, base=base
+            )
+            self.assertEqual(200, status)
+            self.assertEqual(school["id"], again["schools"][0]["id"])
+        finally:
+            stop_server(process, log)
+
+    def test_sign_in_moves_the_timestamps_but_a_failure_does_not(self):
+        process, base, log = spawn_server({
+            **PAYFAST_PRODUCTION,
+            "ADMIN_TOKEN": self.ADMIN_TOKEN,
+            "LAST_SEEN_INTERVAL": "0",
+        })
+        try:
+            wait_healthy(base, process, log)
+            status, _ = request(
+                "POST",
+                "/api/auth/signup",
+                {
+                    "school": "Clock Test High",
+                    "email": "clock@admintest.edu",
+                    "password": "secret123",
+                },
+                base=base,
+            )
+            self.assertEqual(201, status)
+            status, before = request(
+                "GET",
+                "/api/admin/overview",
+                base=base,
+                extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            )
+            self.assertEqual(200, status)
+            first = before["schools"][0]
+
+            # A successful sign-in moves last_login_at and last_seen_at.
+            time.sleep(1.1)
+            status, _ = request(
+                "POST",
+                "/api/auth/login",
+                {"email": "clock@admintest.edu", "password": "secret123"},
+                base=base,
+            )
+            self.assertEqual(200, status)
+            status, after = request(
+                "GET",
+                "/api/admin/overview",
+                base=base,
+                extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            )
+            self.assertEqual(200, status)
+            signed_in = after["schools"][0]
+            self.assertGreater(signed_in["lastLoginAt"], first["lastLoginAt"])
+            self.assertGreaterEqual(signed_in["lastSeenAt"], signed_in["lastLoginAt"])
+
+            # A failed sign-in must not look like activity.
+            time.sleep(1.1)
+            status, _ = request(
+                "POST",
+                "/api/auth/login",
+                {"email": "clock@admintest.edu", "password": "wrong-password"},
+                base=base,
+            )
+            self.assertEqual(401, status)
+            status, final = request(
+                "GET",
+                "/api/admin/overview",
+                base=base,
+                extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            )
+            self.assertEqual(200, status)
+            self.assertEqual(signed_in["lastLoginAt"], final["schools"][0]["lastLoginAt"])
+        finally:
+            stop_server(process, log)
+
+
+    def test_limit_is_validated_and_only_trims_the_page(self):
+        process, base, log = spawn_server({
+            **PAYFAST_PRODUCTION,
+            "ADMIN_TOKEN": self.ADMIN_TOKEN,
+        })
+        try:
+            wait_healthy(base, process, log)
+            for index in (1, 2):
+                status, _ = request(
+                    "POST",
+                    "/api/auth/signup",
+                    {
+                        "school": "Limit Test %d" % index,
+                        "email": "limit%d@example.edu" % index,
+                        "password": "secret123",
+                    },
+                    base=base,
+                )
+                self.assertEqual(201, status)
+
+            status, data = request(
+                "GET",
+                "/api/admin/overview?limit=abc",
+                base=base,
+                extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            )
+            self.assertEqual(400, status)
+            self.assertIn("limit", data["error"])
+
+            status, page = request(
+                "GET",
+                "/api/admin/overview?limit=1",
+                base=base,
+                extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            )
+            self.assertEqual(200, status)
+            self.assertEqual(1, page["returned"])
+            self.assertEqual(1, len(page["schools"]))
+            # ... while the headline numbers still describe every account.
+            self.assertEqual(2, page["totals"]["schools"])
+            self.assertEqual(2, page["totals"]["newSchools"])
+        finally:
+            stop_server(process, log)
 
 
 if __name__ == "__main__":
