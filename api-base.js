@@ -5,8 +5,12 @@
    building any request URL, so this file is the whole configuration surface.
 
      '' (blank)  -> same origin. Correct whenever the Python server serves the
-                    pages itself: http://localhost:8100 locally, or the VPS /
-                    PaaS host that runs server/app.py.
+                    pages itself: http://localhost:8100 locally, the VPS that
+                    runs server/app.py, or the single-origin Render deploy
+                    (deploy/RENDER.md) where one service serves the pages AND
+                    /api/*. Keep it '' there - do not point it at the onrender
+                    or custom-domain URL, or the pages would treat their own
+                    origin as a second, cross-origin host.
 
      'https://...' -> the API's origin, no trailing slash, when the pages are
                     uploaded to the cPanel host (invigismart.online) and the

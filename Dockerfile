@@ -20,11 +20,15 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# server/ plus the four pages and assets/ it serves. Nothing else is needed at
-# runtime; .dockerignore keeps the local database, uploads and credentials out.
+# server/ plus the pages and assets/ it serves. Even the API is same-origin: one
+# container serves index.html/landing.html/assets AND /api/*, so api-base.js
+# stays '' and the site deploys as a single Render web service (deploy/RENDER.md).
+# .dockerignore keeps the local database, uploads and credentials out.
 COPY server/ ./server/
 COPY assets/ ./assets/
 COPY index.html landing.html terms.html privacy.html api-base.js ./
+# Crawler files, served by the same static handler (STATIC_TYPES has .txt/.xml).
+COPY robots.txt sitemap.xml ./
 
 # SQLite database and the uploaded school PDFs. This must be a volume: with the
 # database inside the image, every redeploy silently deletes every paid licence

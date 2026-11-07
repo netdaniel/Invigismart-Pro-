@@ -621,15 +621,25 @@ These are decisions, not bugs — but each one costs money or trust if ignored.
   Schools that pay by EFT simply pay once and you grant the year. That is normal
   in South African procurement (quotation → PO → 30-day EFT), so budget for a
   manual lane alongside the gateway.
-* **SEO basics are still missing** (`robots.txt`, `sitemap.xml`, canonical and
-  social tags); buyers will reach you by word of mouth rather than search until
-  those exist.
+* **Canonical and social tags are still missing.** `robots.txt` and `sitemap.xml`
+  are in the repository and are uploaded with the rest of the site by
+  `deploy/upload-static.sh`, so both pages are crawlable today — but the pages
+  carry no `<link rel="canonical">` and no Open Graph or Twitter tags, so a link
+  previewed in WhatsApp or on LinkedIn shows a bare title. Add those before
+  making search a sales channel, and submit `/sitemap.xml` in Google Search
+  Console once DNS is settled. Until then buyers reach you by word of mouth.
 * **The Tailwind Play CDN compiles CSS in the browser** on both pages, which
   slows first paint and breaks if the CDN is unreachable. Vendor a built
   stylesheet if the landing page becomes your main sales channel — school
   networks in particular block third-party CDNs.
 
 ## 12. Hosting the backend somewhere the static site can reach it
+
+> **Fastest way to bring the site back up:** deploy this repo to Render as a
+> single origin (the Python server serves the static pages *and* `/api/*` from
+> one hostname). Full click-path, DNS records and verification are in
+> **[deploy/RENDER.md](deploy/RENDER.md)**. This section covers the split-hosting
+> alternative (static on cPanel, API elsewhere).
 
 `invigismart.online` is shared cPanel hosting: Apache and PHP, no long-running
 process, no port to bind, no systemd. The backend therefore lives on a second
@@ -1054,6 +1064,37 @@ curl -s https://invigismart.online/api/health    | python3 -m json.tool   # same
 Both hostnames reach the same Passenger app; the second is the one the
 dashboard actually calls, so it is the one that matters.
 
+`./deploy/verify-live.sh` runs those two, the page checks, the search-engine
+files, the "must not be downloadable" list and the anonymous guard rails from
+§7, and prints one verdict per check:
+
+```bash
+./deploy/verify-live.sh                              # the live site, https
+./deploy/verify-live.sh --base http://127.0.0.1:8200  # a local Passenger-style run
+./deploy/verify-live.sh --strict                      # dev target must pass too
+./deploy/verify-live.sh --delay 1                     # a second between requests
+```
+
+It exits non-zero on a real failure, so it can be the first line of a
+post-upload checklist. What it cannot check is money - that is §8.
+
+Exit codes: `0` everything graded passed, `1` at least one check failed (each
+`FAIL` line names the section here that fixes it), `2` nothing could be graded -
+either the site did not answer at all (DNS, TLS, egress) or **the host is serving
+its own holding page**. That second case is worth knowing about, because it looks
+like success: an openresty page titled *"One moment, please..."*, a spinner, and
+`window.location.reload()` every five seconds, returned with **200 for every URL,
+`/api/*` included**. On 2026-11-07 that page was in front of this account and a
+status-only checker called the whole site healthy. So the page checks match each
+page's `<title>` (`Rostering for Schools`, `Terms &amp; Conditions`, ...) and the
+script refuses to grade anything when it sees that spinner. If it does, wait -
+it is a migration, cache purge or resource review on the host's side - and re-run:
+
+```bash
+curl -s https://invigismart.online/ | head -c 200; echo            # spinner HTML?
+curl -s https://invigismart.online/api/health | head -c 120; echo  # must be JSON
+```
+
 * `"publicHost": true` and `"ephemeralJwtSecret": false` - the env file was read.
 * `"billingConfigured": true`, `"mockBilling": false`.
 * `"dbPath"` ends in `/invigismart-api/data/invigismart.db`.
@@ -1080,7 +1121,13 @@ Then a smoke test through the app itself:
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://api.invigismart.online/app
 curl -s -o /dev/null -w '%{http_code}\n' https://api.invigismart.online/server/app.py   # must be 404
+curl -s -o /dev/null -w '%{http_code}\n' https://api.invigismart.online/deploy/invigismart-api.env  # must be 404
 ```
+
+The last two are the same class of failure: the app root holds the source and
+`deploy/` holds the file with `JWT_SECRET` in it, so both must be refused by the
+static handler. `deploy/invigismart-api.env` was downloadable until that rule
+was added - `./deploy/verify-live.sh` checks all four paths.
 
 Finally point the website at it (`§12`, "Then connect the two halves"):
 `api-base.js` → `window.INVIGISMART_API = 'https://api.invigismart.online';`, then
@@ -1124,10 +1171,11 @@ warm during the working day:
   hostname in `APP_BASE_URL` (here `invigismart.online`, which is also where the
   dashboard's session lives) and change what sits behind it.
 
-Next practical steps, in order: add the password-reset flow, then `robots.txt` +
-`sitemap.xml` for the domain you just deployed, then a smoke test in your
-monitoring tool that hits `/api/health` and alerts if `billingConfigured` flips
-to `false`, `payfastSandbox` flips to `true`, or the service exits.
+Next practical steps, in order: add the password-reset flow (the one account
+feature that is still missing), then canonical and Open Graph tags so a shared
+link shows a title and an image, then a smoke test in your monitoring tool that
+hits `/api/health` and alerts if `billingConfigured` flips to `false`,
+`payfastSandbox` flips to `true`, or the service exits.
 
 ## 14. Who is using the product (the owner report)
 

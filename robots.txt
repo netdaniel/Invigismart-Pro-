@@ -1,0 +1,25 @@
+# https://invigismart.online/robots.txt
+#
+# Only the marketing pages are worth indexing. Everything else on this origin is
+# either a signed-in screen or JSON:
+#
+#   /app, /index.html  the roster dashboard; without a session it is a login
+#                      wall, so there is nothing for a crawler to read
+#   /api/              the backend, which answers JSON
+#   /server/           source code, if it ever escaped the docroot
+#   /landing.html      byte-identical to "/" (DirectoryIndex serves it), so
+#                      indexing both would be a duplicate-content penalty
+#
+# /login and /signup are deliberately allowed: they are linked from every page
+# and serve the landing page with the auth modal open.
+
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /index.html
+Disallow: /landing.html
+Disallow: /api/
+Disallow: /server/
+
+# Absolute URL, as the sitemap protocol requires.
+Sitemap: https://invigismart.online/sitemap.xml

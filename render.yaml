@@ -1,10 +1,15 @@
-# Render Blueprint for the Invigismart Pro backend.
+# Render Blueprint for the Invigismart Pro service.
 #
 #   Render dashboard -> New + -> Blueprint -> pick this repo -> Apply.
 #
-# Render then builds ./Dockerfile, mounts the disk below at /data, and asks for
-# every value marked `sync: false` (those are the secrets, which must never sit
-# in git). Values marked `generateValue: true` are created once by Render.
+# This is a SINGLE-ORIGIN deploy: one container serves the static site
+# (index.html, landing.html, terms/privacy, assets/) AND /api/* from the same
+# hostname, so api-base.js stays '' and the domain needs no separate api. host.
+# The click-path, DNS records and verification are in deploy/RENDER.md.
+#
+# Render builds ./Dockerfile, mounts the disk below at /data, and asks for every
+# value marked `sync: false` (those are the secrets, which must never sit in
+# git). Values marked `generateValue: true` are created once by Render.
 #
 # Two things about the plan choice:
 #   * `starter` is the cheapest plan that allows a persistent disk. On the free
@@ -31,10 +36,13 @@ services:
       sizeGB: 1
     envVars:
       # --- shape of the process ---------------------------------------------
+      # Bind every interface. Do NOT pin PORT here: Render injects PORT into the
+      # container (default 10000) and its router forwards to exactly that port.
+      # server/app.py and the Dockerfile HEALTHCHECK both read $PORT, so the app
+      # and the probe always agree with Render. (The image's ENV PORT=8080 is
+      # only the fallback for `docker run` outside Render.)
       - key: HOST
         value: 0.0.0.0
-      - key: PORT
-        value: 8080
       # Database and uploaded PDFs, on the disk above (never in the image).
       - key: DB_PATH
         value: /data/invigismart.db
@@ -42,10 +50,12 @@ services:
         value: /data/documents
 
       # --- public URL --------------------------------------------------------
-      # The address customers and PayFast's ITN reach. For the first deploy use
-      # the onrender.com hostname Render assigns; after adding the custom domain
-      # (api.invigismart.online) change it here and redeploy, because it builds
-      # the return/cancel URLs and the recorded notify_url.
+      # The ONE origin this service serves: the static site and /api/* both live
+      # here. For the first deploy use the onrender.com hostname Render assigns
+      # (https://invigismart-api.onrender.com). Once the custom domain in
+      # deploy/RENDER.md is verified, change it to https://invigismart.online and
+      # redeploy: this value builds the PayFast return/cancel URLs and the
+      # recorded notify_url, so it must match what customers actually see.
       - key: APP_BASE_URL
         sync: false
 
@@ -78,6 +88,14 @@ services:
       # Mock billing mints free licences; it is force-disabled on https anyway.
       - key: ALLOW_MOCK_BILLING
         value: "0"
+      # First-deploy escape hatch. server/config.py REFUSES TO BOOT when
+      # APP_BASE_URL is https and the gateway is not fully configured. Set this
+      # to "1" ONLY to bring the site + app online before PayFast credentials
+      # exist: the marketing pages, signup and the roster dashboard work, but
+      # PAYMENTS ARE OFF. Flip it back to "0" the moment PAYFAST_MERCHANT_ID /
+      # KEY / PASSPHRASE are entered, or a real payment cannot complete.
+      - key: ALLOW_INSECURE_BILLING
+        value: "0"
 
       # --- plan copy / support ----------------------------------------------
       - key: PLAN_NAME
@@ -92,3 +110,11 @@ services:
         value: daniel@invigismart.online
       - key: SUPPORT_PHONE
         value: "+27 76 319 3749"
+
+      # --- owner report (optional) ------------------------------------------
+      # GET /api/admin/overview lists every school, its licence state and last
+      # activity. Off unless this is set, and a value shorter than 24 chars
+      # counts as unset. Generate with:
+      #   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+      - key: ADMIN_TOKEN
+        sync: false
