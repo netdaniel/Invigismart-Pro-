@@ -651,10 +651,18 @@ These are decisions, not bugs — but each one costs money or trust if ignored.
   previewed in WhatsApp or on LinkedIn shows a bare title. Add those before
   making search a sales channel, and submit `/sitemap.xml` in Google Search
   Console once DNS is settled. Until then buyers reach you by word of mouth.
-* **The Tailwind Play CDN compiles CSS in the browser** on both pages, which
-  slows first paint and breaks if the CDN is unreachable. Vendor a built
-  stylesheet if the landing page becomes your main sales channel — school
-  networks in particular block third-party CDNs.
+* **Tailwind and Lucide are self-hosted, pinned by SRI, and must reach the
+  docroot.** Both pages load `assets/tailwind-3.4.16.js` and
+  `assets/lucide-0.451.0.min.js` from this origin with `integrity` hashes: the
+  pages keep the session token in `localStorage`, and the policy in `.htaccess`
+  allows `script-src 'self'`, so a third-party CDN would both see the token and be
+  blocked. That trades a CDN outage for an upload obligation — a page uploaded
+  while those two files are missing, or with bytes that do not match the pinned
+  hash, renders as unstyled text with no server error to point at (the CSP blocks
+  the CDN copy, the browser refuses a hash mismatch, and both fail silently).
+  `./deploy/upload-static.sh --verify` reads the asset URLs out of the pages and
+  checks every one of them, and `test_every_asset_the_pages_load_is_uploaded`
+  fails if the upload list falls behind them.
 
 ## 12. Hosting the backend somewhere the static site can reach it
 

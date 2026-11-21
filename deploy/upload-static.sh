@@ -172,28 +172,52 @@ print_files
 # the address that answered turns that from a mystery into a diagnosis.
 SITE_ORIGIN_IP="${SITE_ORIGIN_IP:-156.155.252.98}"
 
+# Every file the pages load from this origin, taken from the pages themselves
+# rather than from a hand-kept list. The hand-kept list went stale exactly once:
+# .htaccess arrived with the CDN dropped from script-src while landing.html still
+# pointed at it and the self-hosted copies were missing, so every page rendered
+# unstyled while this function reported nothing but 200s. A URL read out of the
+# HTML cannot drift from the HTML: if a page references a file, it is checked.
+page_assets() {
+  grep -ho '\(src\|href\)="/[^"]*"' index.html landing.html \
+    | sed 's/^[a-z]*="//; s/"$//' \
+    | grep -E '\.(js|css|png|jpe?g|gif|svg|ico|webp|woff2?|json)$' \
+    | sort -u
+}
+
 verify_site() {
   echo
   echo "verifying over HTTPS:"
-  local p code size ip stale=0
-  for p in / /landing.html /privacy /terms /privacy.html /terms.html \
-           /app /login /signup /reset-password /robots.txt /sitemap.xml \
-           /assets/timetable-import.js /assets/exam-types.js; do
-    printf '  %-30s ' "$p"
-    read -r code size ip < <(curl -s -o /dev/null \
-      -w '%{http_code} %{size_download} %{remote_ip}\n' "$SITE_URL$p")
-    printf '%s  %sb  via %s\n' "$code" "$size" "$ip"
-    if [ "$code" != "200" ] || [ "$ip" != "$SITE_ORIGIN_IP" ]; then
-      stale=1
-    fi
-  done
+  local p code size ip failed=0
 
-  if [ "$stale" -ne 0 ]; then
+  check_url() {
+    local code size ip
+    printf '  %-34s ' "$1"
+    read -r code size ip < <(curl -s -o /dev/null \
+      -w '%{http_code} %{size_download} %{remote_ip}\n' "$SITE_URL$1")
+    printf '%s  %sb  via %s\n' "$code" "$size" "$ip"
+    { [ "$code" = "200" ] && [ "$ip" = "$SITE_ORIGIN_IP" ]; } || return 1
+  }
+
+  for p in / /landing.html /privacy /terms /privacy.html /terms.html \
+           /app /login /signup /reset-password /robots.txt /sitemap.xml; do
+    check_url "$p" || failed=$((failed + 1))
+  done
+  while read -r p; do
+    check_url "$p" || failed=$((failed + 1))
+  done < <(page_assets)
+
+  if [ "$failed" -ne 0 ]; then
     echo
-    echo "warning: not every page answered 200 from $SITE_ORIGIN_IP (this host)." >&2
-    echo "  A resolver can still hold the previous host's address, and that server" >&2
-    echo "  has no .htaccess, so /terms and /privacy are 404 there no matter what" >&2
-    echo "  was just uploaded. Ask the authoritative name server instead:" >&2
+    echo "warning: $failed path(s) did not answer 200 from $SITE_ORIGIN_IP (this host)." >&2
+    echo "  A 404 on an /assets/ path means the page is live but a file it loads is" >&2
+    echo "  not, which looks like a broken design rather than an error: no styling," >&2
+    echo "  no icons, no error in any log. Re-run with --apply and confirm the file" >&2
+    echo "  reached the docroot's assets/ directory." >&2
+    echo "  An answer from another address is the other cause. A resolver can still" >&2
+    echo "  hold the previous host's address, and that server has no .htaccess, so" >&2
+    echo "  /terms and /privacy are 404 there no matter what was just uploaded. Ask" >&2
+    echo "  the authoritative name server instead:" >&2
     echo "    dig @ns1.clusterdns.co.za invigismart.online A +short" >&2
     echo "  then clear the local cache (resolvectl flush-caches) and retry." >&2
   fi

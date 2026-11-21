@@ -7,6 +7,7 @@ entitlement paths. No third-party packages required:
     python3 server/tests/test_api.py
     python3 -m unittest discover -s server/tests      # same tests, discovery
 """
+import base64
 import datetime
 import email
 import hashlib
@@ -3121,6 +3122,80 @@ class StaticSiteArchiveTests(unittest.TestCase):
         # The folder is an entry of its own so every extractor recreates it.
         self.assertIn("assets/", names)
         self.assertNotIn(".env", names)
+
+    # What a browser fetches from this origin as a file, as opposed to a route
+    # the web server rewrites (/app, /login, /terms): a rewritten route never
+    # carries one of these suffixes.
+    ASSET_SUFFIXES = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+                      ".ico", ".webp", ".woff", ".woff2", ".json")
+
+    def page_assets(self):
+        """{path-relative-to-docroot: first page that loads it}."""
+        root = os.path.dirname(SERVER_DIR)
+        found = {}
+        for page in ("index.html", "landing.html"):
+            with open(os.path.join(root, page)) as handle:
+                text = handle.read()
+            for url in re.findall(r'(?:src|href)="(/[^"]*)"', text):
+                if url.lower().endswith(self.ASSET_SUFFIXES):
+                    found.setdefault(url.lstrip("/"), page)
+        return found
+
+    def test_every_asset_the_pages_load_is_uploaded(self):
+        """A file the pages load but the uploader never sends is a broken site.
+
+        This is the November break, pinned: the pages moved to self-hosted
+        Tailwind and Lucide, .htaccess dropped cdn.tailwindcss.com from
+        script-src, and the docroot received the new policy but not the new
+        files. Every page then rendered unstyled with no error anywhere, because
+        nothing was missing here - only the upload list was short, and that list
+        is the single thing that decides what the docroot has.
+        """
+        listed = set(self.site_files())
+        root = os.path.dirname(SERVER_DIR)
+        for path, page in sorted(self.page_assets().items()):
+            self.assertIn(path, listed, "%s loads /%s" % (page, path))
+            self.assertTrue(os.path.isfile(os.path.join(root, path)), path)
+
+    def test_no_page_loads_a_script_from_another_origin(self):
+        """script-src is 'self', so such a script is blocked, not merely slow.
+
+        When the blocked script is Tailwind the symptom is a wall of unstyled
+        text rather than an error, which is precisely how the CDN reference
+        survived a policy change unnoticed.
+        """
+        root = os.path.dirname(SERVER_DIR)
+        for page in ("index.html", "landing.html"):
+            with open(os.path.join(root, page)) as handle:
+                text = handle.read()
+            for url in re.findall(r'<script[^>]+src="(https?://[^"]+)"', text):
+                self.fail("%s loads %s; the CSP allows script-src 'self'"
+                          % (page, url))
+
+    def test_the_pinned_scripts_match_their_integrity_hashes(self):
+        """SRI turns a corrupted upload into an unstyled page, not an error.
+
+        A re-downloaded library with the same name and a stale hash is refused
+        by the browser and the page loses its styling, so the hashes in the pages
+        and the bytes in assets/ have to be compared here rather than in a
+        browser console nobody has open.
+        """
+        root = os.path.dirname(SERVER_DIR)
+        pinned = {}
+        for page in ("index.html", "landing.html"):
+            with open(os.path.join(root, page)) as handle:
+                text = handle.read()
+            for tag in re.findall(r"<script[^>]*>", text):
+                src = re.search(r'src="/?([^"]+)"', tag)
+                digest = re.search(r'integrity="sha384-([^"]+)"', tag)
+                if src and digest and not src.group(1).startswith("http"):
+                    pinned.setdefault(src.group(1), set()).add(digest.group(1))
+        self.assertTrue(pinned, "no self-hosted script is pinned with SRI")
+        for name, digests in sorted(pinned.items()):
+            with open(os.path.join(root, name), "rb") as handle:
+                actual = base64.b64encode(hashlib.sha384(handle.read()).digest()).decode()
+            self.assertEqual({actual}, digests, name)
+
 
 
 class StaticHeaderTests(unittest.TestCase):
