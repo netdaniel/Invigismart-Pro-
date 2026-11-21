@@ -67,7 +67,12 @@ DirectoryIndex landing.html
   # that runtime needs to build its stylesheet. That is weaker than a
   # precompiled build would allow, but it still stops an injected <script> from
   # any other origin from running on a page that holds a session token.
-  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self' https://www.payfast.co.za https://sandbox.payfast.co.za; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self' https://www.youtube-nocookie.com; connect-src 'self' https://invigismart.online https://api.invigismart.online; upgrade-insecure-requests"
+  #
+  # form-action names both live PayFast checkout hosts, because the browser is
+  # the one that POSTs the signed payment form: listing only one of them breaks
+  # checkout on the other with a console error the school mistakes for a broken
+  # site.
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self' https://payment.payfast.io https://www.payfast.co.za https://sandbox.payfast.co.za; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self' https://www.youtube-nocookie.com; connect-src 'self' https://invigismart.online https://api.invigismart.online; upgrade-insecure-requests"
 </IfModule>
 
 # ---------------------------------------------------------------------------

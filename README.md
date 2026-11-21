@@ -347,6 +347,19 @@ payment extends the licence - a short payment is recorded but not credited.
 `DEPLOY.md` section 6 has the full walkthrough, including the sandbox purchase
 that proves the signature.
 
+The browser posts to `https://payment.payfast.io/eng/process`, the host
+PayFast's own dashboard puts in a generated button; the older
+`https://www.payfast.co.za/eng/process` still answers the identical form, so
+`PAYFAST_PROCESS_URL` is the one-line revert if the new host ever misbehaves.
+ITN validation stays on `www.payfast.co.za` until a live ITN has been watched on
+another host (`PAYFAST_VALIDATE_URL`).
+
+A **button generated in the PayFast dashboard is not a checkout for this app**:
+it carries only `cmd`/`receiver`/`amount`, with no `notify_url`, no signature and
+no recurring fields, so a payment would arrive with no ITN to issue the licence
+and no token to cancel. The signed form built in `server/payfast.py` carries all
+three, which is why the buy buttons call `/api/billing/checkout`.
+
 ### Live Stripe
 
 ```bash
@@ -499,6 +512,7 @@ See `.env.example` for the full list. The essentials:
 | `BILLING_PROVIDER` | auto | `payfast`, `stripe` or `mock`; blank auto-detects from the credentials present |
 | `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY`, `PAYFAST_PASSPHRASE` | - | PayFast credentials (*Settings → Integration*); the passphrase must match the account |
 | `PAYFAST_SANDBOX`, `PAYFAST_FREQUENCY`, `PAYFAST_CYCLES` | `0` / `6` / `0` | Sandbox switch, annual billing, renew until cancelled |
+| `PAYFAST_PROCESS_URL`, `PAYFAST_VALIDATE_URL`, `PAYFAST_API_BASE` | PayFast's own hosts | Endpoint overrides; blank uses `payment.payfast.io` for checkout, `www.payfast.co.za` for ITN validation |
 | `PAYFAST_ITN_VERIFICATION` | `api` | `api`, `api+signature`, `signature` or `off` (tests only) |
 | `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` | - | Stripe alternative, where the entity is Stripe-supported |
 | `APP_BASE_URL` | `http://localhost:<PORT>` | Payment return base; **https here means production** |

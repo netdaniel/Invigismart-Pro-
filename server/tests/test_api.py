@@ -2346,8 +2346,35 @@ class PayFastCheckoutTests(unittest.TestCase):
             "https://sandbox.payfast.co.za/eng/process", payfast.process_url(self.cfg)
         )
         live = config.Config(env=dict(PAYFAST_PRODUCTION, PAYFAST_SANDBOX="0"))
-        self.assertEqual("https://www.payfast.co.za/eng/process", payfast.process_url(live))
+        # The host the PayFast dashboard's own buttons post to. It answers the
+        # custom-integration form identically to the legacy name, so the signed
+        # form works against either.
+        self.assertEqual(
+            "https://payment.payfast.io/eng/process", payfast.process_url(live)
+        )
+        self.assertEqual(
+            "https://www.payfast.co.za/eng/query/validate", payfast.validate_url(live)
+        )
         self.assertEqual("https://api.payfast.co.za", payfast.api_base(live))
+
+    def test_endpoint_overrides_beat_the_built_in_hosts(self):
+        # A deliberate revert to the legacy checkout host, or a staging proxy,
+        # must be a configuration change and not a code change.
+        pinned = config.Config(
+            env=dict(
+                PAYFAST_PRODUCTION,
+                PAYFAST_SANDBOX="0",
+                PAYFAST_PROCESS_URL=payfast.PROCESS_URL_LIVE_LEGACY,
+                PAYFAST_VALIDATE_URL="https://validate.example.test/eng/query/validate",
+                PAYFAST_API_BASE="https://api.example.test/",
+            )
+        )
+        self.assertEqual(payfast.PROCESS_URL_LIVE_LEGACY, payfast.process_url(pinned))
+        self.assertEqual(
+            "https://validate.example.test/eng/query/validate",
+            payfast.validate_url(pinned),
+        )
+        self.assertEqual("https://api.example.test", payfast.api_base(pinned))
 
     def test_cancel_signs_content_length_when_there_is_no_body(self):
         seen = {}
@@ -2881,6 +2908,10 @@ ADMIN_TOKEN=%(admin_token)s
         self.assertEqual(200, status)
         fields = checkout["fields"]
         self.assertEqual("payfast", checkout["mode"])
+        # The URL the browser will POST those fields to. Pinned end to end
+        # because the page submits whatever the API names, so a wrong host here
+        # is a checkout that never leaves the site.
+        self.assertEqual(payfast.PROCESS_URL_SANDBOX, checkout["url"])
         # Built from APP_BASE_URL in the env file, not from the request host.
         self.assertEqual("https://api.example.test/api/billing/webhook",
                          fields["notify_url"])
@@ -3140,7 +3171,10 @@ class StaticHeaderTests(unittest.TestCase):
         self.assertEqual("'self'", directives["frame-ancestors"])
         self.assertEqual("'self'", directives["base-uri"])
         # The gateway's redirect and the tour video are the only off-site
-        # destinations the pages legitimately reach.
+        # destinations the pages legitimately reach. Both live checkout hosts are
+        # listed: the browser POSTs the signed form, so a missing host is a
+        # checkout that dies in the console.
+        self.assertIn("https://payment.payfast.io", directives["form-action"])
         self.assertIn("https://www.payfast.co.za", directives["form-action"])
         self.assertIn("https://sandbox.payfast.co.za", directives["form-action"])
         self.assertIn("https://www.youtube-nocookie.com", directives["frame-src"])

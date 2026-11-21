@@ -16,7 +16,7 @@ browser ──HTTPS──> Caddy/nginx ──HTTP loopback──> invigismart (p
     │                                                   │
     │                                                   └─ outbound HTTPS ─> api.payfast.co.za
     │                                                        (cancel / pause / fetch a subscription)
-    └─ POSTs a signed form ──> www.payfast.co.za  (the payment page, card or Instant EFT)
+    └─ POSTs a signed form ──> payment.payfast.io  (the payment page, card or Instant EFT)
                               │
                               └─ ITN ──HTTPS──> /api/billing/webhook  (verified, then applied)
 ```
@@ -142,7 +142,8 @@ Restart=always
 RestartSec=3
 
 # The process only needs its own code tree, its database directory and
-# outbound HTTPS to api.payfast.co.za. Everything else is denied.
+# outbound HTTPS to api.payfast.co.za (subscriptions) and www.payfast.co.za
+# (confirming an ITN). Everything else is denied.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -302,6 +303,9 @@ Do this in **sandbox mode first**, then repeat with live credentials.
 
 1. **Credentials.** PayFast → *Settings → Integration*. Copy the **Merchant ID**
    and **Merchant Key** into `PAYFAST_MERCHANT_ID` and `PAYFAST_MERCHANT_KEY`.
+   (For the Prinsloo Consulting account the Merchant ID is `37402189` — the
+   `receiver` on any button PayFast generates for it. A different legal entity
+   uses its own.)
 
 2. **Passphrase.** On the same screen, set a passphrase and put the *same* value
    into `PAYFAST_PASSPHRASE`. PayFast validates the signature on the payment form
@@ -312,6 +316,13 @@ Do this in **sandbox mode first**, then repeat with live credentials.
    > sends its own signed `notify_url`, `return_url` and `cancel_url` with each
    > payment, so the ITN comes straight back to `/api/billing/webhook`.
 
+   > **Do not use a *Pay Now* button generated in the PayFast dashboard.** Those
+   > buttons post `cmd`, `receiver`, `amount` and `item_name` and nothing else:
+   > no `notify_url`, no signature, no recurring fields. A school that paid
+   > through one would hand over money and get no ITN, so no licence would be
+   > issued, and there would be no subscription token to cancel at renewal. The
+   > form this app signs carries all three.
+
 3. **`PLAN_PRICE_AMOUNT`.** Set it to the amount actually charged (`1200.00`).
    `PLAN_PRICE_DISPLAY` is only what the pages print; this is what PayFast
    collects, and it is also the figure a short payment is measured against.
@@ -321,7 +332,12 @@ Do this in **sandbox mode first**, then repeat with live credentials.
    behaves like the live gateway but moves no money.
 
 5. **How a payment becomes a licence.** The browser POSTs the signed form to
-   PayFast; PayFast then POSTs an **ITN** (Instant Transaction Notification) to
+   `https://payment.payfast.io/eng/process` — the host the dashboard's own
+   buttons use, and the one `server/payfast.py` defaults to. The older
+   `https://www.payfast.co.za/eng/process` still answers the identical form, so
+   `PAYFAST_PROCESS_URL` is the one-line revert if the new host misbehaves; ITN
+   validation keeps asking `www.payfast.co.za` unless `PAYFAST_VALIDATE_URL` says
+   otherwise. PayFast then POSTs an **ITN** (Instant Transaction Notification) to
    `https://<your-domain>/api/billing/webhook`. The server:
 
    * confirms the ITN with PayFast itself (`PAYFAST_ITN_VERIFICATION=api`, the

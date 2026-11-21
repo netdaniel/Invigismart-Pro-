@@ -65,6 +65,11 @@ say www_dir "$(ls /var/www 2>/dev/null | tr '\n' ' ')"
 # --- can it reach PayFast and the outside world -----------------------------
 say outbound_payfast "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 12 \
   https://api.payfast.co.za/ 2>&1 || echo unreachable)"
+# The app asks this host whether an ITN is genuine. If egress to it is blocked,
+# payments are taken and no licence is ever issued (200 = reachable, it answers
+# INVALID to a bodiless POST).
+say outbound_payfast_validate "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 12 \
+  -X POST -d '' https://www.payfast.co.za/eng/query/validate 2>&1 || echo unreachable)"
 say outbound_https "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 12 \
   https://api.github.com/ 2>&1 || echo unreachable)"
 

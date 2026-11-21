@@ -34,10 +34,26 @@ import urllib.request
 # ---------------------------------------------------------------- endpoints
 # Live and sandbox hosts. Overridable through config so a staging host can be
 # pointed at the sandbox without a code change.
-PROCESS_URL_LIVE = "https://www.payfast.co.za/eng/process"
+#
+# PayFast answers on two live checkout hostnames. payment.payfast.io is the
+# current one - it is what the PayFast dashboard puts in a button it generates -
+# and it runs the same application as the old name: posting the same unsigned
+# order to both returned the same 578-byte redirect body to
+# /eng/process/payment/<session>, differing only in that session id and the
+# hostname echoed back, and both validate engines answer INVALID to a bare POST.
+# So the signed form built below works against either. The legacy host is kept
+# here because older firewall rules and documentation still name it, and
+# because PAYFAST_PROCESS_URL is the one-line way to go back if the new host
+# ever misbehaves.
+PROCESS_URL_LIVE = "https://payment.payfast.io/eng/process"
+PROCESS_URL_LIVE_LEGACY = "https://www.payfast.co.za/eng/process"
 PROCESS_URL_SANDBOX = "https://sandbox.payfast.co.za/eng/process"
+# ITN validation stays on the documented host: it is the step that decides
+# whether a payment is real, so it moves only when someone has watched a live
+# ITN pass, via PAYFAST_VALIDATE_URL.
 VALIDATE_URL_LIVE = "https://www.payfast.co.za/eng/query/validate"
 VALIDATE_URL_SANDBOX = "https://sandbox.payfast.co.za/eng/query/validate"
+# The API (subscriptions, cancel) is only served from the .co.za name.
 API_BASE_LIVE = "https://api.payfast.co.za"
 API_BASE_SANDBOX = "https://sandbox.payfast.co.za"
 
@@ -286,11 +302,15 @@ ITN_VERIFY_BOTH = "api+signature"
 ITN_VERIFY_OFF = "off"
 
 # PayFast sends notifications from these hosts (their own plugin resolves them).
+# The new checkout host is included so an operator who pins PAYFAST_IP_ALLOWLIST
+# from this list does not reject an ITN merely because it arrived on the newer
+# domain.
 ITN_HOSTS = (
     "www.payfast.co.za",
     "sandbox.payfast.co.za",
     "w1w.payfast.co.za",
     "w2w.payfast.co.za",
+    "payment.payfast.io",
 )
 
 
