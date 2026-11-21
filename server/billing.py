@@ -313,7 +313,7 @@ def apply_subscription_event(store, event, cfg=None):
             status="active",
             current_period_end=to_iso(period_end),
             stripe_customer_id=obj.get("customer"),
-            stripe_subscription_id=obj.get("subscription"),
+            provider_subscription_id=obj.get("subscription"),
         )
         _end_trial(store, user_id)
         return user_id, "activated"
@@ -327,7 +327,7 @@ def apply_subscription_event(store, event, cfg=None):
             status=obj.get("status") or "active",
             current_period_end=to_iso(period_end),
             stripe_customer_id=obj.get("customer"),
-            stripe_subscription_id=obj.get("id") or obj.get("subscription"),
+            provider_subscription_id=obj.get("id") or obj.get("subscription"),
         )
         if (obj.get("status") or "active") in ACTIVE_STATUSES:
             _end_trial(store, user_id)
@@ -443,7 +443,7 @@ def _apply_canonical_event(store, event, cfg):
             user_id,
             status="active",
             current_period_end=to_iso(period_end),
-            stripe_subscription_id=event.get("provider_subscription_id"),
+            provider_subscription_id=event.get("provider_subscription_id"),
             provider=event.get("provider") or cfg.billing_provider,
         )
         _end_trial(store, user_id)
@@ -472,7 +472,7 @@ def create_billing_summary(store, user, cfg):
     """
     subscription = store.get_subscription(user["id"]) or {}
     entitlement_info = entitlement(store, user, cfg)
-    token = subscription.get("stripe_subscription_id")
+    token = subscription.get("provider_subscription_id")
     provider = cfg.billing_provider
     return {
         "provider": provider,
@@ -513,7 +513,7 @@ def cancel_licence(store, user, cfg, cancel_call=None):
             code="unsupported",
         )
     subscription = store.get_subscription(user["id"]) or {}
-    token = subscription.get("stripe_subscription_id")
+    token = subscription.get("provider_subscription_id")
     if not token:
         raise BillingError(
             "This licence is not linked to a PayFast subscription yet, so it cannot "

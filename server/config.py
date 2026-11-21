@@ -188,6 +188,46 @@ class Config:
             if self.support_phone_dial else ""
         )
 
+        # --- password reset email ----------------------------------------------
+        # SMTP is the one delivery route a school needs for a forgotten password,
+        # so it is ordinary configuration rather than a hard-coded mail service:
+        # 587 + STARTTLS, 465 + implicit TLS, or a local relay with neither.
+        self.smtp_host = (env.get("SMTP_HOST", "") or "").strip()
+        self.smtp_port = _env_int("SMTP_PORT", 587, env)
+        self.smtp_username = (env.get("SMTP_USER", "") or "").strip()
+        self.smtp_password = env.get("SMTP_PASSWORD", "") or ""
+        self.smtp_from = (env.get("SMTP_FROM", "") or "").strip() or self.support_email
+        self.smtp_ssl = _env_bool("SMTP_SSL", default=self.smtp_port == 465, env=env)
+        self.smtp_starttls = _env_bool(
+            "SMTP_STARTTLS", default=not self.smtp_ssl, env=env
+        )
+        self.smtp_timeout = max(1, _env_int("SMTP_TIMEOUT", 15, env))
+        self.smtp_configured = bool(self.smtp_host)
+        # A link that lives longer than an hour is a bigger window than a reset
+        # needs; anything shorter than five minutes is unusable in a real inbox.
+        self.password_reset_ttl = max(300, _env_int("PASSWORD_RESET_TTL", 3600, env))
+        # Per-account cooldown, so /api/auth/forgot-password cannot be used to
+        # flood a mailbox. 0 disables it (the tests run with 0).
+        self.password_reset_throttle = max(
+            0, _env_int("PASSWORD_RESET_THROTTLE", 60, env)
+        )
+        # Sign-in throttling. PBKDF2 makes each guess slow, but "slow" is still a
+        # few thousand guesses a day against one account, and the login endpoint
+        # used to answer them all. The counter is keyed on the address *and* the
+        # client IP (see app.py), so one teacher mistyping a password cannot lock
+        # out a whole staff room that shares a NAT address. 0 disables it.
+        self.login_max_attempts = max(0, _env_int("LOGIN_MAX_ATTEMPTS", 5, env))
+        self.login_lockout_seconds = max(
+            0, _env_int("LOGIN_LOCKOUT_SECONDS", 900, env)
+        )
+        # The link must land on the website, not the API's own hostname (they
+        # differ on cPanel: the site is invigismart.online, the app is a
+        # subdomain). APP_BASE_URL is already the site origin; allow an override.
+        self.password_reset_base_url = (
+            (env.get("PASSWORD_RESET_BASE_URL", "") or "").strip().rstrip("/")
+            or self.app_base_url
+        )
+
         # --- owner report --------------------------------------------------------
         # GET /api/admin/overview is the only endpoint that lists schools, their
         # licence state and their last activity, and it hands out every customer's
@@ -213,7 +253,26 @@ class Config:
         self.public_host = self.app_base_url.lower().startswith("https://")
         self.billing_fatal = []
         self.billing_warnings = []
+        self.email_warnings = []
         self._review_billing_safety()
+        self._review_email_safety()
+
+    def _review_email_safety(self):
+        """Record why the forgot-password flow would not reach a school.
+
+        This is a warning, not a boot guard: an existing deployment must keep
+        taking payments while SMTP is being set up. It is still a silent failure
+        (the page says a link was sent and no mail follows), so it belongs in the
+        startup banner and in /api/health where the operator will see it.
+        """
+        if self.public_host and not self.smtp_configured:
+            self.email_warnings.append(
+                "SMTP_HOST is not set: /api/auth/forgot-password cannot email a "
+                "reset link, so a school that forgets its password stays locked "
+                "out until you reset it for them. Set SMTP_HOST (and SMTP_PORT, "
+                "SMTP_USER, SMTP_PASSWORD, SMTP_FROM) or point PASSWORD_RESET_BASE_URL "
+                "at a page that can help."
+            )
 
     def _review_billing_safety(self):
         """Record the billing misconfigurations that must stop a public deployment."""
@@ -331,11 +390,17 @@ class Config:
             digits = "27" + digits[1:]
         return ("+" + digits) if digits else ""
 
-    def describe(self):
-        return {
-            "host": self.host,
-            "port": self.port,
-            "dbPath": self.db_path,
+    def describe(self, include_internals=False):
+        """The configuration /api/health reports.
+
+        Everything here is either public product copy or a yes/no about whether
+        a feature is switched on. ``include_internals`` adds the server's own
+        address and database path, which describe the filesystem layout of the
+        host and are useful only to whoever runs it: the endpoint is answered
+        without a session, so they stay out of the payload unless the caller
+        proved it holds ADMIN_TOKEN (see app.py).
+        """
+        info = {
             "billingProvider": self.billing_provider,
             "billingConfigured": self.billing_configured,
             "payfastConfigured": self.payfast_configured,
@@ -345,6 +410,11 @@ class Config:
             "publicHost": self.public_host,
             "billingWarnings": list(self.billing_warnings),
             "ephemeralJwtSecret": self.jwt_secret_is_ephemeral,
+            # Password reset: whether mail can leave the server at all, and how
+            # long an emailed link lives. No secrets are exposed here.
+            "emailConfigured": self.smtp_configured,
+            "passwordResetTtl": self.password_reset_ttl,
+            "emailWarnings": list(self.email_warnings),
             # Whether the owner report answers at all. It says nothing about the
             # token itself, only that the endpoint is switched on.
             "adminOverview": self.admin_overview_enabled,
@@ -359,3 +429,10 @@ class Config:
             "documentMaxCount": self.max_documents_per_user,
             "documentMaxStorageBytes": self.max_document_storage_bytes,
         }
+        if include_internals:
+            info.update({
+                "host": self.host,
+                "port": self.port,
+                "dbPath": self.db_path,
+            })
+        return info

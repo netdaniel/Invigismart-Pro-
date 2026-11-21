@@ -39,14 +39,17 @@ Have these before you start, because the deployment is useless without them:
       approves the account it only processes sandbox payments.
 - [ ] A **decision on VAT**: is R1200 inclusive or exclusive of 15%? If you are
       VAT-registered, South African schools will expect a tax invoice.
-- [ ] A **password-reset plan** — see "Known limits" at the end. The app has no
-      self-service reset, so a paying school that forgets its password has no
-      way back in unless you add one or handle it manually.
+- [ ] A **password-reset plan**. The app now ships a self-service flow (login →
+      **Forgot password?** → emailed single-use link), but it needs outbound email:
+      set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM`
+      (see `.env.production.example`). Without SMTP the endpoint still answers
+      safely but sends nothing, `/api/health` reports `emailConfigured: false`, and
+      the startup banner warns. Keep a manual procedure as the fallback.
 - [ ] A **support contact you actually monitor**, an email address and a phone or
       WhatsApp number. Set `SUPPORT_EMAIL` and `SUPPORT_PHONE`; they are printed
-      on the landing page, the dashboard footer and the billing panel. Until a
-      reset flow exists, this is the only route a school has for a failed
-      payment, an invoice query or a forgotten password.
+      on the landing page, the dashboard footer and the billing panel. A school
+      whose mail is bouncing or whose account looks wrong still needs a human to
+      reach.
 
 Throughout this document:
 
@@ -419,7 +422,7 @@ curl -s $BASE/api/health | python3 -c "import json,sys;print(json.load(sys.stdin
 
 # b) the subscription row is really in the database (the token is PayFast's)
 sqlite3 /var/lib/invigismart/invigismart.db \
-  "SELECT status, current_period_end, provider, stripe_subscription_id FROM subscriptions;"
+  "SELECT status, current_period_end, provider, provider_subscription_id FROM subscriptions;"
 
 # c) the ITN was received and applied (newest first)
 sqlite3 /var/lib/invigismart/invigismart.db \
@@ -512,8 +515,8 @@ watch `du -sh /var/lib/invigismart/documents`.
 **Where schools reach you.** `SUPPORT_EMAIL` and `SUPPORT_PHONE` are printed in
 the landing-page footer and FAQ, the dashboard footer and the billing panel, and
 served through `/api/health` so all three agree. Monitor that inbox and that
-number: with no self-service password reset, an unanswered message is a locked-out
-school or a lost renewal.
+number: a password-reset mail that lands in spam, or an unanswered message, is a
+locked-out school or a lost renewal.
 
 ## 10. When it refuses to start
 
@@ -589,10 +592,14 @@ ALLOW_INSECURE_BILLING=1    # in /etc/invigismart.env, then restart
 
 These are decisions, not bugs — but each one costs money or trust if ignored.
 
-* **No password reset and no email verification.** There is no reset endpoint and
-  no admin CLI, so a paying school that forgets its password is locked out. Add a
-  reset flow (you will need outbound email) or keep a documented manual
-  procedure before onboarding real customers.
+* **Password reset depends on outbound email.** The login page offers a
+  self-service link, but it can only be delivered when `SMTP_HOST` is set. A
+  missing mail configuration is a warning rather than a boot failure (so an
+  existing deployment keeps selling), which means an operator who never reads
+  `/api/health` may not notice that reset mail is not going out. There is still
+  no email *verification*: an address is accepted as typed at signup. Existing
+  sessions are stateless JWTs, so a reset does not sign other devices out; there
+  is no "sign out everywhere".
 * **Single process, single instance.** SQLite plus `ThreadingHTTPServer` means one
   machine, no horizontal scaling, and no shared session store. Scale by adding a
   WSGI/ASGI server and a real RDBMS, not by adding replicas.
@@ -1171,6 +1178,75 @@ warm during the working day:
   hostname in `APP_BASE_URL` (here `invigismart.online`, which is also where the
   dashboard's session lives) and change what sits behind it.
 
+### 13.6 When *nothing* answers, including the panel
+
+`https://invigismart.online` times out **and** `https://156.155.252.98:2222`
+times out **and** `curl https://api.ipify.org` from the same laptop works. That
+combination is not Apache, not Passenger and not this app: a broken app answers
+`500` (with a changing Error ID) for `/api/*` while `/` still renders, and
+DirectAdmin's own panel keeps loading. A dead panel means the packets never
+reach a service at all, so the cause is a firewall holding **your source IP**,
+not a closed port.
+
+On this host the firewall is **CSF + LFD**, not UFW, and the web server is
+CloudLinux + **Apache**, not nginx — so `systemctl status nginx` and
+`ufw allow 80/tcp` change nothing here (`ufw` is usually not even installed), and
+the box already accepts `:80`, `:443` and `:2222` from the rest of the internet.
+What blocks a developer is almost always LFD tripping on repeated failed logins:
+`LF_SSHD` and `LF_FTPD` deny the IP on *every* port for an hour, and a repeat
+offender is written to `/etc/csf/csf.deny` permanently. The FTP history in
+`deploy/README.md` — a `530` for the wrong password, then
+`421 Home directory not available` — is exactly that trigger.
+
+Note also that **under Passenger the app binds no port**: the `"host":
+"127.0.0.1", "port": 8000` in `/api/health` is what `server/config.py` *would*
+bind for `python3 server/app.py`. `ss -ltnp | grep 8000` returning nothing is
+normal; only the VPS/Docker shape (§3–§5) has an app port to inspect.
+
+Prove where the block is before changing anything:
+
+```bash
+# 1. Your public IP - the value to look for on the server.
+curl -s https://api.ipify.org; echo
+
+# 2. Does the host answer from somewhere else? Phone hotspot, or a TCP checker
+#    with worldwide nodes: https://check-host.net/check-tcp?host=156.155.252.98:2222
+#    Answering elsewhere proves the server is up and your IP is the problem.
+```
+
+Then, on the server — DirectAdmin → *Admin Level → ConfigServer Firewall &
+Security*, or the provider's console/VNC if `:2222` is blocked for you too:
+
+```bash
+sudo csf -g <your-ip>                      # which rule, which file denies it
+sudo csf -dr <your-ip>                     # remove a permanent deny (csf.deny)
+sudo csf -tr <your-ip>                     # remove a temporary deny
+sudo csf -a <your-ip> "exams-office laptop"  # whitelist - only for a static IP
+sudo csf -r                                # reload, then confirm with csf -g
+```
+
+The panel equivalent is *CSF → Search for IP* → **Remove**, and *Quick Allow* to
+whitelist. If CSF lists nothing, the block is upstream of the host — the
+provider's DDoS filter or a null route — and only their support can lift it.
+Quote the IP from step 1, the exact times, and the sentence that gets it found:
+"every port, including the panel, times out from this IP while the same ports
+answer from other networks."
+
+A dynamic IP will be blocked again the next time a script retries a password, so
+on this host prefer the credential-free routes: `./deploy/upload-static.sh --zip`
+and `./deploy/upload-passenger.sh --zip`, one archive each, uploaded and
+extracted in File Manager. Both build exactly the list the FTP path would send,
+so the site does not depend on the block being lifted. Then verify from a network
+that can reach the site:
+
+```bash
+./deploy/verify-live.sh
+```
+
+From the blocked network it exits `2` with "cannot reach … at all - that is DNS,
+TLS or egress, not the app", which is the correct verdict — and the reason it is
+worth reading that line instead of reinstalling Apache.
+
 Next practical steps, in order: add the password-reset flow (the one account
 feature that is still missing), then canonical and Open Graph tags so a shared
 link shows a title and an image, then a smoke test in your monitoring tool that
@@ -1234,6 +1310,7 @@ Notes:
   (`Store._migrate`). Accounts created before this build show `null` until their
   next sign-in, which starts populating both.
 * This is a report, not a console: it never writes and never changes a licence.
-  There is still no admin UI and no password reset - fixing a locked-out school
-  is still a `subscriptions`/`users` edit (§10, "Replaying a notification").
+  There is still no admin UI. A locked-out school can usually use the
+  self-service reset at `/reset-password`; if its mail is unreachable, fixing the
+  account is still a `subscriptions`/`users` edit (§10, "Replaying a notification").
 

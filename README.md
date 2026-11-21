@@ -38,9 +38,10 @@ assets/
 server/
   app.py                HTTP server: routing, static files, API endpoints
   config.py             Environment-driven configuration
-  db.py                 SQLite persistence (users, subscriptions, payments, documents, event log)
+  db.py                 SQLite persistence (users, subscriptions, payments, documents, reset links, event log)
   documents.py          Multipart parsing, PDF validation and safe document names
   examtypes.py          Exam-type catalogue: grade scopes + timetable policy per sitting
+  mailer.py             Password-reset email over SMTP (standard library only)
   security.py           PBKDF2 password hashing + HS256 JWT sessions
   billing.py            Billing state machine: checkout, entitlement events, mock mode
   payfast.py            PayFast gateway: signed payment form, ITN validation, recurring API
@@ -240,6 +241,8 @@ same provenance line and a `Grade` column as `/api/roster/export`.
 | `GET` | `/api/health` | - | Liveness + effective configuration |
 | `POST` | `/api/auth/signup` | - | Create account, start trial, return token |
 | `POST` | `/api/auth/login` | - | Verify password, return token |
+| `POST` | `/api/auth/forgot-password` | - | Email a single-use reset link. Always the same 200 answer, so it cannot be used to discover which emails have accounts |
+| `POST` | `/api/auth/reset-password` | reset token | Consume the emailed token and set a new password |
 | `GET` | `/api/me` | Bearer | Account + authoritative entitlement |
 | `POST` | `/api/billing/checkout` | Bearer | Start a payment: `{ url, fields }` for PayFast (POST the fields), or `{ url }` for Stripe |
 | `POST` | `/api/billing/portal` | Bearer | Stripe only: open the hosted Billing Portal |
@@ -504,6 +507,10 @@ See `.env.example` for the full list. The essentials:
 | `PLAN_NAME`, `PLAN_PRICE_DISPLAY`, `PLAN_PRICE_AMOUNT` | `Annual School Unlimited`, `R1200 / year`, `1200.00` | UI copy, plus the amount actually charged |
 | `SUBSCRIPTION_DAYS` | `365` | Length of one paid period |
 | `SUPPORT_EMAIL`, `SUPPORT_PHONE` | the live address and number | Contact details printed on the landing page, the dashboard footer and the billing panel; served via `/api/health` so every page agrees |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | - / `587` / - / - / `SUPPORT_EMAIL` | Outbound mail for password-reset links. `SMTP_STARTTLS` and `SMTP_SSL` default from the port (587 = STARTTLS, 465 = implicit TLS). Unset locally, where the link is printed to the console |
+| `PASSWORD_RESET_TTL`, `PASSWORD_RESET_THROTTLE` | `3600`, `60` | Link lifetime in seconds (minimum 300) and per-address cooldown before another link is sent |
+| `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_SECONDS` | `5`, `900` | Failed sign-ins allowed for one email + client IP pair before `/api/auth/login` answers 429, and the length of that lockout. `0` disables it; a correct password clears the count |
+| `PASSWORD_RESET_BASE_URL` | `APP_BASE_URL` | Origin in the emailed link; override only if the reset page lives somewhere else |
 
 ## Contact
 
@@ -519,13 +526,18 @@ The pages are served these values from `SUPPORT_EMAIL` and `SUPPORT_PHONE` (see
 dashboard footer and the billing panel — change the environment variables rather
 than the HTML, which is served, not built.
 
-Worth knowing while there is no self-service password reset: if a school loses
-its password, this address is its only way back in.
+Worth knowing: a school that loses its password can use **Forgot password?** on
+the login page, provided `SMTP_HOST` is configured (see *Configuration*). The
+reset link is single-use, expires after `PASSWORD_RESET_TTL` seconds and lands on
+`/reset-password`. With SMTP unset, a local server prints the link to its console
+instead; on a public host it logs that no mail was sent, and this support address
+remains the fallback.
 
 ## Security notes
 
 * Passwords are stored as PBKDF2-HMAC-SHA256 (200k iterations, per-user salt) and
-  never returned by any endpoint.
+  never returned by any endpoint. A reset token is 256 random bits; only its
+  SHA-256 hash is stored, and each link works once and expires.
 * Session tokens are HMAC-signed; tampering or expiry yields `401`.
 * Inbound payment notifications are verified before touching the database: a
   PayFast ITN is confirmed with PayFast itself (and can additionally be
@@ -550,7 +562,7 @@ its password, this address is its only way back in.
 This is a deliberately dependency-free server (`ThreadingHTTPServer` + SQLite)
 aimed at a single school or a small deployment. Before running it at scale,
 consider a production WSGI/ASGI server with a real RDBMS, rate limiting and
-lockout on `/api/auth/*`, email verification and password reset, and TLS
+lockout on `/api/auth/*`, email verification, and TLS
 termination at a reverse proxy. Roster, teacher and exam data stay in the
 browser; account, subscription and uploaded-document metadata live on the
 server, with the PDF bytes in `DOCUMENTS_DIR`.

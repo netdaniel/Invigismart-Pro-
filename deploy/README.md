@@ -26,19 +26,45 @@ verification stays on.
 cp deploy/.deploy.env.example .deploy.env   # fill in cPanel/FTP user + password
 ./deploy/upload-static.sh                   # dry run: lists what would change
 ./deploy/upload-static.sh --apply --verify   # upload, then check over HTTPS
+./deploy/upload-static.sh --zip              # no FTP: one archive for File Manager
 ```
 
 `.deploy.env` is gitignored. The script uploads only the files the website is
 made of (`index.html`, `landing.html`, `privacy.html`, `terms.html`, `.htaccess`,
-`api-base.js`, `assets/*`). `server/`, `.env`, `*.db`, `server/uploads/` and
-timetable backups are never touched, and nothing is deleted on the server.
+`api-base.js`, `robots.txt`, `sitemap.xml`, `assets/*`). `server/`, `.env`,
+`*.db`, `server/uploads/` and timetable backups are never touched, and nothing is
+deleted on the server.
+
+If port 21 cannot be reached from your network — a firewall holding the IP, or a
+plan with no usable FTP account — `--zip` writes `deploy/invigismart-site.zip`
+with exactly that list. Upload it in File Manager, Extract it in the docroot, and
+delete the archive; `DEPLOY.md` §13.6 covers why an IP gets blocked in the first
+place and how to lift it.
 
 # Sorting the two uploads
 
 | Script | Uploads | To |
 |---|---|---|
-| `upload-static.sh` | the website: 4 pages, `.htaccess`, `api-base.js`, `assets/*` | `public_html` on the main domain |
+| `upload-static.sh` | the website: 4 pages, `.htaccess`, `api-base.js`, `robots.txt`, `sitemap.xml`, `assets/*` | `public_html` on the main domain — over FTPS, or as `--zip` plus File Manager |
 | `upload-passenger.sh` | the backend: `passenger_wsgi.py`, the pages, `api-base.js`, `assets/*`, `server/*.py` | the Python application root (`DEPLOY.md` §13) |
+| `verify-live.sh` | nothing — it checks the deployed site and prints one verdict per check | `https://invigismart.online` by default |
+
+`verify-live.sh` is the one to run when the question is "is the site working?".
+It checks the pages, the search-engine files, the paths that must **not** be
+downloadable (`/server/*`, `.env`, the database, `deploy/*.env`), the
+`/api/health` values that `DEPLOY.md` §13.3 requires, and the anonymous guard
+rails from §7. A target that is not `https` is treated as a development server:
+production-only rules are reported as skipped instead of failed, and `--strict`
+promotes them. Exit code 1 means something real is broken, 2 means nothing could
+be graded — the site did not answer at all (DNS, TLS, egress), or the host is
+serving its own "One moment, please..." holding page, which answers 200 to every
+URL and would otherwise make the whole report look green.
+
+The page checks match each page's `<title>`, not just its status code: that is
+what caught the holding page, and it is what a search engine shows anyway. If
+the host starts answering with that page while you run this, `--delay 1` spaces
+the ~35 requests out by a second each, which is usually enough to stop being
+treated as a bot.
 
 The backend uploader never ships `server/tests/`, `server/uploads/`, the SQLite
 database or `.env`: the first two are development-only, the last two are local
@@ -66,15 +92,18 @@ before anything is uploaded.
 `make-api-env.py` writes the production `.env` for that app root -
 `deploy/invigismart-api.env`, gitignored, upload it and **Rename** it to `.env`.
 It copies the PayFast values from your `.env`, mints a fresh `JWT_SECRET`,
-pins `APP_BASE_URL`, and refuses to replace an existing file without `--force`
-(a new secret signs every school out). Tests feed its output back into
-`config.Config` and assert the production checks pass, so the template cannot
-drift from `server/config.py`.
+pins `APP_BASE_URL`, and carries the `SMTP_*` / `PASSWORD_RESET_*` settings so
+the forgot-password flow can send mail from the live API. It refuses to replace
+an existing file without `--force` (a new secret signs every school out). Tests
+feed its output back into `config.Config` and assert the production checks pass,
+so the template cannot drift from `server/config.py`.
 
-`--verify` checks over HTTPS: `upload-static.sh` compares the pages byte for
-byte, while `upload-passenger.sh` reads `/api/health` and reports the four values
-that decide whether the deployment can take money (`publicHost`,
-`ephemeralJwtSecret`, `billingConfigured`, `mockBilling`) plus the database path.
+`--verify` checks over HTTPS: `upload-static.sh` requests every page and reports
+the status, the size and the IP that answered (so a stale DNS answer is visible
+instead of mysterious), while `upload-passenger.sh` reads `/api/health` and
+reports the four values that decide whether the deployment can take money
+(`publicHost`, `ephemeralJwtSecret`, `billingConfigured`, `mockBilling`) plus the
+database path. `verify-live.sh` does both and the guard rails around them.
 
 `api-base.js` is what points the pages at the backend (`window.INVIGISMART_API`).
 Blank means same-origin, which is right when the Python server serves the pages

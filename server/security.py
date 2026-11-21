@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 
 PBKDF2_ALGO = "pbkdf2_sha256"
@@ -49,6 +50,20 @@ def verify_password(password, stored):
         return hmac.compare_digest(candidate, expected)
     except (ValueError, TypeError, AttributeError):
         return False
+
+
+def new_reset_token():
+    """A high-entropy, URL-safe password-reset token (256 bits)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_reset_token(token):
+    """What the database stores for a reset link - never the token itself.
+
+    SHA-256 is enough here (unlike for passwords): the token is 256 random bits,
+    so there is no dictionary to guess and no need for a slow KDF.
+    """
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
 def sign_jwt(claims, secret):

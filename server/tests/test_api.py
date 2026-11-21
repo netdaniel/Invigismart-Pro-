@@ -5,8 +5,10 @@ drives it over HTTP, so the tests exercise the actual auth, billing, webhook and
 entitlement paths. No third-party packages required:
 
     python3 server/tests/test_api.py
+    python3 -m unittest discover -s server/tests      # same tests, discovery
 """
 import datetime
+import email
 import hashlib
 import hmac
 import json
@@ -14,9 +16,11 @@ import os
 import re
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -108,7 +112,8 @@ def request(method, path, body=None, token=None, extra_headers=None, raw_body=No
             except ValueError:
                 return resp.status, payload
     except urllib.error.HTTPError as exc:
-        payload = exc.read().decode("utf-8")
+        with exc:
+            payload = exc.read().decode("utf-8")
         try:
             parsed = json.loads(payload)
         except ValueError:
@@ -344,6 +349,11 @@ class AuthTests(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertTrue(data["config"]["mockBilling"])
         self.assertFalse(data["config"]["stripeConfigured"])
+        # The host, port and database path describe the machine, not the
+        # product, and /api/health answers without a session: an anonymous
+        # probe must not learn where the database lives.
+        for key in ("host", "port", "dbPath"):
+            self.assertNotIn(key, data["config"])
         # The plan copy is served from config so the pages never hard-code it.
         self.assertEqual(data["config"]["planName"], "Annual School Unlimited")
         self.assertEqual(data["config"]["planPrice"], "R1200 / year")
@@ -428,6 +438,448 @@ class AuthTests(unittest.TestCase):
             "GET", "/api/me", token="%s.%s.%s" % (header, forged, signature)
         )
         self.assertEqual(status, 401)
+
+
+class _SmtpSink(threading.Thread):
+    """A throwaway SMTP server that captures what the app sends.
+
+    Enough of RFC 5321 for smtplib to complete a delivery (greeting, EHLO,
+    MAIL FROM, RCPT TO, DATA, QUIT) with no TLS and no authentication, which is
+    why the test server runs with SMTP_STARTTLS=0 and SMTP_SSL=0. It runs in a
+    daemon thread and keeps every message body it receives.
+    """
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self._sock = socket.socket()
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(5)
+        self._sock.settimeout(0.2)
+        self.port = self._sock.getsockname()[1]
+        self.messages = []
+        self._stopping = threading.Event()
+        self.start()
+
+    def run(self):
+        while not self._stopping.is_set():
+            try:
+                conn, _ = self._sock.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                self._handle(conn)
+            except OSError:
+                pass
+            finally:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+
+    def _handle(self, conn):
+        conn.settimeout(5)
+        reader = conn.makefile("rb")
+        self._reply(conn, b"220 invigismart-test-smtp ready\r\n")
+        body = []
+        in_data = False
+        while True:
+            line = reader.readline()
+            if not line:
+                break
+            if in_data:
+                if line in (b".\r\n", b".\n"):
+                    self.messages.append(b"".join(body).decode("utf-8", "replace"))
+                    body = []
+                    in_data = False
+                    self._reply(conn, b"250 OK\r\n")
+                else:
+                    # Undo SMTP dot-stuffing, as a real server would.
+                    body.append(line[1:] if line.startswith(b"..") else line)
+                continue
+            command = line[:4].upper()
+            if command in (b"EHLO", b"HELO", b"RSET", b"NOOP"):
+                # A single-line EHLO reply means "no extensions", which is fine:
+                # the client was told not to STARTTLS or authenticate.
+                self._reply(conn, b"250 invigismart-test-smtp\r\n")
+            elif command == b"DATA":
+                in_data = True
+                self._reply(conn, b"354 End data with <CR><LF>.<CR><LF>\r\n")
+            elif command == b"QUIT":
+                self._reply(conn, b"221 Bye\r\n")
+                break
+            else:
+                self._reply(conn, b"250 OK\r\n")
+        try:
+            reader.close()
+        except OSError:
+            pass
+
+    @staticmethod
+    def _reply(conn, payload):
+        try:
+            conn.sendall(payload)
+        except OSError:
+            pass
+
+    def stop(self):
+        self._stopping.set()
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+        self.join(timeout=2)
+
+
+class LoginThrottleTests(unittest.TestCase):
+    """Too many wrong passwords lock that (address, IP) pair out.
+
+    A separate server, because the shared one runs with the production default
+    of five attempts and a fifteen-minute lockout; driving those here would
+    leave addresses blocked for the rest of the run.
+    """
+
+    MAX_ATTEMPTS = 3
+
+    @classmethod
+    def setUpClass(cls):
+        cls.process, cls.base, cls.log = spawn_server({
+            "JWT_SECRET": "login-throttle-secret",
+            "LOGIN_MAX_ATTEMPTS": str(cls.MAX_ATTEMPTS),
+            "LOGIN_LOCKOUT_SECONDS": "120",
+        })
+        wait_healthy(cls.base, cls.process, cls.log)
+
+    @classmethod
+    def tearDownClass(cls):
+        stop_server(cls.process, cls.log)
+
+    def sign_up(self, email):
+        status, _ = request(
+            "POST", "/api/auth/signup",
+            {"school": "Westridge High", "email": email, "password": "secret123"},
+            base=self.base,
+        )
+        self.assertEqual(201, status)
+
+    def attempt(self, email, password):
+        return request(
+            "POST", "/api/auth/login",
+            {"email": email, "password": password},
+            base=self.base,
+        )
+
+    def test_wrong_password_locks_the_pair_out(self):
+        self.sign_up("locked@example.com")
+        for _ in range(self.MAX_ATTEMPTS):
+            status, _ = self.attempt("locked@example.com", "definitely-wrong")
+            self.assertEqual(401, status)
+        status, data = self.attempt("locked@example.com", "definitely-wrong")
+        self.assertEqual(429, status)
+        self.assertEqual("too_many_attempts", data.get("code"))
+        # The right password is refused too: the point is that guessing stops,
+        # not that the attacker has to keep guessing to stay out.
+        status, _ = self.attempt("locked@example.com", "secret123")
+        self.assertEqual(429, status)
+
+    def test_another_account_is_not_locked_out(self):
+        self.sign_up("first@example.com")
+        self.sign_up("second@example.com")
+        for _ in range(self.MAX_ATTEMPTS):
+            self.attempt("first@example.com", "nope")
+        self.assertEqual(429, self.attempt("first@example.com", "nope")[0])
+        status, data = self.attempt("second@example.com", "secret123")
+        self.assertEqual(200, status)
+        self.assertTrue(data["token"])
+
+    def test_a_correct_password_clears_the_count(self):
+        self.sign_up("clears@example.com")
+        for _ in range(self.MAX_ATTEMPTS - 1):
+            self.assertEqual(401, self.attempt("clears@example.com", "nope")[0])
+        self.assertEqual(200, self.attempt("clears@example.com", "secret123")[0])
+        # A fresh run of failures must start from zero, not from two.
+        self.assertEqual(401, self.attempt("clears@example.com", "nope")[0])
+        self.assertEqual(200, self.attempt("clears@example.com", "secret123")[0])
+
+
+class PasswordResetTests(unittest.TestCase):
+    """Forgot password: request a link, consume it once, sign in with the new one.
+
+    Runs against a real server whose SMTP_HOST points at the in-process sink, so
+    the test covers the mailer, the token store and the HTTP endpoints together.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sink = _SmtpSink()
+        cls.process, cls.base, cls.log = spawn_server({
+            "JWT_SECRET": "password-reset-secret",
+            "ALLOW_MOCK_BILLING": "1",
+            "SMTP_HOST": "127.0.0.1",
+            "SMTP_PORT": str(cls.sink.port),
+            "SMTP_STARTTLS": "0",
+            "SMTP_SSL": "0",
+            "SMTP_FROM": "no-reply@invigismart.test",
+            "PASSWORD_RESET_THROTTLE": "0",
+            "PASSWORD_RESET_TTL": "3600",
+            # A non-https base so the production billing guard stays off while
+            # the test still proves the link is built from APP_BASE_URL.
+            "APP_BASE_URL": "http://reset.example.edu",
+        })
+        wait_healthy(cls.base, cls.process, cls.log)
+
+    @classmethod
+    def tearDownClass(cls):
+        stop_server(cls.process, cls.log)
+        cls.sink.stop()
+
+    def _signup(self, address, password="oldsecret123"):
+        status, data = request(
+            "POST",
+            "/api/auth/signup",
+            {"school": "Reset High", "email": address, "password": password},
+            base=self.base,
+        )
+        self.assertEqual(201, status, msg=data)
+        return data
+
+    def _forgot(self, address):
+        return request(
+            "POST", "/api/auth/forgot-password", {"email": address}, base=self.base
+        )
+
+    def _wait_for_new_email(self, recipient, already_seen):
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            for raw in list(self.sink.messages[already_seen:]):
+                if recipient in raw:
+                    return raw
+            time.sleep(0.05)
+        self.fail("no reset email arrived for %s" % recipient)
+
+    @staticmethod
+    def _body(raw):
+        """Decoded text of every part, so quoted-printable wrapping is undone."""
+        parsed = email.message_from_string(raw)
+        chunks = []
+        for part in parsed.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
+            payload = part.get_payload(decode=True)
+            if payload:
+                chunks.append(
+                    payload.decode(part.get_content_charset() or "utf-8", "replace")
+                )
+        return "\n".join(chunks)
+
+    def _token(self, raw):
+        match = re.search(
+            r"/reset-password\?token=([A-Za-z0-9_\-]+)", self._body(raw)
+        )
+        self.assertIsNotNone(match, msg="no reset link in the email")
+        return match.group(1)
+
+    def test_health_reports_email_configuration(self):
+        status, data = request("GET", "/api/health", base=self.base)
+        self.assertEqual(200, status)
+        self.assertTrue(data["config"]["emailConfigured"])
+        self.assertGreaterEqual(data["config"]["passwordResetTtl"], 300)
+        self.assertEqual([], data["config"]["emailWarnings"])
+
+    def test_forgot_password_emails_a_link_that_resets_once(self):
+        address = "reset-flow@example.com"
+        self._signup(address)
+        seen = len(self.sink.messages)
+
+        status, data = self._forgot(address)
+        self.assertEqual(200, status, msg=data)
+        self.assertIn("If that email belongs to an account", data["message"])
+        # The token only travels by email: the response must never carry it.
+        self.assertNotIn("token", json.dumps(data).lower())
+
+        raw = self._wait_for_new_email(address, seen)
+        token = self._token(raw)
+        self.assertIn(
+            "http://reset.example.edu/reset-password?token=", self._body(raw)
+        )
+
+        # A password that fails validation is refused without burning the link.
+        status, _ = request(
+            "POST",
+            "/api/auth/reset-password",
+            {"token": token, "password": "short"},
+            base=self.base,
+        )
+        self.assertEqual(400, status)
+
+        status, data = request(
+            "POST",
+            "/api/auth/reset-password",
+            {"token": token, "password": "newsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(200, status, msg=data)
+
+        status, _ = request(
+            "POST",
+            "/api/auth/login",
+            {"email": address, "password": "oldsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(401, status)
+        status, data = request(
+            "POST",
+            "/api/auth/login",
+            {"email": address, "password": "newsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(200, status, msg=data)
+        self.assertTrue(data["token"])
+
+        # Single-use: replaying the link changes nothing.
+        status, data = request(
+            "POST",
+            "/api/auth/reset-password",
+            {"token": token, "password": "anothersecret123"},
+            base=self.base,
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_reset_token", data["code"])
+
+    def test_unknown_address_gets_the_same_answer_and_no_email(self):
+        known = "known-reset@example.com"
+        unknown = "no-such-school@example.com"
+        self._signup(known)
+
+        seen = len(self.sink.messages)
+        known_status, known_data = self._forgot(known)
+        self._wait_for_new_email(known, seen)
+        unknown_status, unknown_data = self._forgot(unknown)
+
+        self.assertEqual(200, unknown_status)
+        self.assertEqual(known_status, unknown_status)
+        self.assertEqual(known_data["message"], unknown_data["message"])
+        time.sleep(0.3)
+        for raw in self.sink.messages[seen:]:
+            self.assertNotIn(unknown, raw)
+
+    def test_a_second_request_invalidates_the_first_link(self):
+        address = "two-links@example.com"
+        self._signup(address)
+
+        seen = len(self.sink.messages)
+        self.assertEqual(200, self._forgot(address)[0])
+        first = self._token(self._wait_for_new_email(address, seen))
+
+        seen = len(self.sink.messages)
+        self.assertEqual(200, self._forgot(address)[0])
+        second = self._token(self._wait_for_new_email(address, seen))
+        self.assertNotEqual(first, second)
+
+        status, data = request(
+            "POST",
+            "/api/auth/reset-password",
+            {"token": first, "password": "newsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(400, status, msg=data)
+        status, _ = request(
+            "POST",
+            "/api/auth/reset-password",
+            {"token": second, "password": "newsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(200, status)
+
+    def test_forgot_and_reset_validate_their_input(self):
+        status, data = self._forgot("not-an-email")
+        self.assertEqual(400, status)
+        self.assertIn("valid email", data["error"])
+
+        for body in ({}, {"token": ""}, {"token": "made-up-token", "password": "newsecret123"}):
+            status, data = request(
+                "POST", "/api/auth/reset-password", body, base=self.base
+            )
+            self.assertEqual(400, status, msg=body)
+            self.assertEqual("invalid_reset_token", data["code"])
+
+
+class PasswordResetConsoleFallbackTests(unittest.TestCase):
+    """With SMTP unset, a local server prints the link instead of emailing it.
+
+    This is the path a developer uses on a laptop (and the only way to exercise
+    the flow without a mailbox), so it gets its own real server and follows the
+    printed link all the way to a working password.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.process, cls.base, cls.log = spawn_server({
+            "JWT_SECRET": "reset-console-secret",
+            "ALLOW_MOCK_BILLING": "1",
+            "SMTP_HOST": "",
+            "SMTP_FROM": "",
+            "PASSWORD_RESET_THROTTLE": "0",
+        })
+        wait_healthy(cls.base, cls.process, cls.log)
+
+    @classmethod
+    def tearDownClass(cls):
+        stop_server(cls.process, cls.log)
+
+    def _printed_link(self, address):
+        pattern = re.compile(
+            r"\[reset\].*reset link for %s: (\S+)" % re.escape(address)
+        )
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            self.log.flush()
+            self.log.seek(0)
+            match = pattern.search(self.log.read())
+            if match:
+                return match.group(1)
+            time.sleep(0.1)
+        self.fail("no reset link was printed for %s" % address)
+
+    def test_the_printed_link_resets_the_password(self):
+        address = "console-reset@example.com"
+        status, _ = request(
+            "POST",
+            "/api/auth/signup",
+            {"school": "Console High", "email": address, "password": "oldsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(201, status)
+        status, data = request(
+            "POST", "/api/auth/forgot-password", {"email": address}, base=self.base
+        )
+        self.assertEqual(200, status, msg=data)
+
+        link = self._printed_link(address)
+        parsed = urllib.parse.urlparse(link)
+        token = urllib.parse.parse_qs(parsed.query)["token"][0]
+
+        # The printed URL must open the reset page on this server.
+        status, html = request("GET", parsed.path + "?" + parsed.query, base=self.base)
+        self.assertEqual(200, status)
+        self.assertIn('id="resetForm"', html)
+
+        status, _ = request(
+            "POST",
+            "/api/auth/reset-password",
+            {"token": token, "password": "newsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(200, status)
+        status, data = request(
+            "POST",
+            "/api/auth/login",
+            {"email": address, "password": "newsecret123"},
+            base=self.base,
+        )
+        self.assertEqual(200, status, msg=data)
 
 
 class RosterSubjectAliasTests(unittest.TestCase):
@@ -1302,6 +1754,13 @@ class FrontEndTests(unittest.TestCase):
         self.assertIn("startTrial()", html)
         self.assertIn("buyNow()", html)
         self.assertIn('id="authForm"', html)
+        # Forgot password: a link on the login form, a request form and the
+        # reset form that the emailed link opens.
+        self.assertIn("Forgot password?", html)
+        self.assertIn('id="forgotForm"', html)
+        self.assertIn('id="resetForm"', html)
+        self.assertIn("/api/auth/forgot-password", html)
+        self.assertIn("/api/auth/reset-password", html)
         # It must talk to the same API and share the dashboard's session key.
         self.assertIn("/api/auth/", html)
         self.assertIn("invigismart_token_v1", html)
@@ -1320,6 +1779,9 @@ class FrontEndTests(unittest.TestCase):
             self.assertIn('accept="application/pdf,.pdf"', html)
             self.assertIn("uploadDocument(event)", html)
             self.assertIn("/api/documents", html)
+            # A locked-out administrator lands here: the login overlay must
+            # reach the reset flow on the landing page.
+            self.assertIn('href="/reset-password"', html)
 
     def test_dashboard_cannot_grant_itself_a_licence(self):
         # Selling a licence only works if the dashboard cannot mint one. The
@@ -1345,6 +1807,16 @@ class FrontEndTests(unittest.TestCase):
             status, html = request("GET", path)
             self.assertEqual(status, 200, msg=path)
             self.assertIn("Invigismart Pro", html)
+
+    def test_reset_password_path_serves_the_reset_flow(self):
+        # The emailed link points at /reset-password (not directly at /), so the
+        # server has to route it to the page that reads the token.
+        for path in ("/reset-password", "/reset-password/"):
+            status, html = request("GET", path)
+            self.assertEqual(status, 200, msg=path)
+            self.assertIn('id="resetForm"', html)
+            self.assertIn('id="forgotForm"', html)
+            self.assertIn("showResetPane", html)
 
     def test_terms_and_privacy_pages_are_served(self):
         # The signup consent checkbox and both footers link to these pages, so
@@ -1410,6 +1882,7 @@ class FrontEndTests(unittest.TestCase):
             r"RewriteRule ^app/?$ index.html [L]",
             r"RewriteRule ^login/?$ landing.html [L]",
             r"RewriteRule ^signup/?$ landing.html [L]",
+            r"RewriteRule ^reset-password/?$ landing.html [L]",
             r"RewriteRule ^terms/?$ terms.html [L]",
             r"RewriteRule ^privacy/?$ privacy.html [L]",
         ):
@@ -1512,6 +1985,31 @@ class FrontEndTests(unittest.TestCase):
     def test_unknown_api_endpoint_returns_404(self):
         status, _ = request("GET", "/api/nope")
         self.assertEqual(status, 404)
+
+    def test_libraries_are_self_hosted_and_pinned(self):
+        # The session token lives in localStorage, so a script from a third
+        # party would run with access to it. Both libraries ship from this
+        # origin, the version is in the filename, and the SRI hash pins the
+        # bytes - a corrupted upload is refused rather than executed.
+        for path in ("/", "/app", "/terms", "/privacy"):
+            status, html = request("GET", path)
+            self.assertEqual(200, status, msg=path)
+            self.assertNotIn("cdn.tailwindcss.com", html, msg=path)
+            self.assertNotIn("unpkg.com", html, msg=path)
+            self.assertIn('src="/assets/tailwind-3.4.16.js"', html, msg=path)
+            self.assertIn('src="/assets/lucide-0.451.0.min.js"', html, msg=path)
+            self.assertIn('integrity="sha384-', html, msg=path)
+            # Icons every browser and iOS look for, so neither logs a 404.
+            self.assertIn('href="/favicon.ico"', html, msg=path)
+            self.assertIn("/assets/apple-touch-icon.png", html, msg=path)
+
+        # The files the pages name really are served, and are not empty.
+        for asset in ("/assets/tailwind-3.4.16.js", "/assets/lucide-0.451.0.min.js",
+                      "/assets/apple-touch-icon.png", "/favicon.ico"):
+            with urllib.request.urlopen(BASE + asset, timeout=15) as resp:
+                body = resp.read()
+                self.assertEqual(200, resp.status, asset)
+            self.assertTrue(body, asset)
 
     def test_server_sources_and_database_are_not_public(self):
         for path in (
@@ -1719,6 +2217,70 @@ class ConfigGuardTests(unittest.TestCase):
             stop_server(process, log)
 
 
+class SubscriptionIdMigrationTests(unittest.TestCase):
+    """A database written by the Stripe-only build keeps its recurring token.
+
+    The column was called stripe_subscription_id. Renaming it in SCHEMA only
+    helps a database created from now on, so the upgrade is exercised against a
+    real old-shaped file: the token must arrive in provider_subscription_id, and
+    writes through the new name must keep working afterwards.
+    """
+
+    def legacy_database(self, name):
+        path = os.path.join(TMP_DIR, name)
+        connection = sqlite3.connect(path)
+        connection.executescript(
+            "CREATE TABLE users ("
+            " id TEXT PRIMARY KEY, school TEXT NOT NULL,"
+            " email TEXT NOT NULL UNIQUE COLLATE NOCASE, pw_hash TEXT NOT NULL,"
+            " created_at TEXT NOT NULL, trial_ends_at TEXT,"
+            " last_login_at TEXT, last_seen_at TEXT);"
+            "CREATE TABLE subscriptions ("
+            " user_id TEXT PRIMARY KEY, plan TEXT NOT NULL, status TEXT NOT NULL,"
+            " current_period_end TEXT, stripe_customer_id TEXT,"
+            " stripe_subscription_id TEXT, updated_at TEXT NOT NULL);"
+        )
+        connection.execute(
+            "INSERT INTO users (id, school, email, pw_hash, created_at)"
+            " VALUES ('u1', 'Westridge High', 'legacy@example.com', 'hash',"
+            " '2026-01-01T00:00:00Z')"
+        )
+        connection.execute(
+            "INSERT INTO subscriptions (user_id, plan, status, current_period_end,"
+            " stripe_subscription_id, updated_at) VALUES ('u1',"
+            " 'annual_school_unlimited', 'active', '2099-01-01T00:00:00Z',"
+            " 'tok_legacy_1', '2026-01-01T00:00:00Z')"
+        )
+        connection.commit()
+        connection.close()
+        return path
+
+    def test_legacy_token_is_copied_to_the_new_column(self):
+        store = db.Store(self.legacy_database("legacy-subscription.db"))
+        row = store.get_subscription("u1")
+        self.assertEqual("tok_legacy_1", row["provider_subscription_id"])
+        # A write that does not name the token preserves the migrated value,
+        # which is what a cancellation does.
+        store.upsert_subscription("u1", status="canceled")
+        row = store.get_subscription("u1")
+        self.assertEqual("canceled", row["status"])
+        self.assertEqual("tok_legacy_1", row["provider_subscription_id"])
+
+    def test_cancellation_still_finds_the_migrated_token(self):
+        cfg = config.Config(env=dict(PAYFAST_PRODUCTION))
+        store = db.Store(self.legacy_database("legacy-cancel.db"))
+        user = store.get_user_by_id("u1")
+        called = []
+
+        def stub(_cfg, token):
+            called.append(token)
+            return {}
+
+        result = billing.cancel_licence(store, user, cfg, cancel_call=stub)
+        self.assertEqual(["tok_legacy_1"], called)
+        self.assertTrue(result["cancelled"])
+
+
 class PayFastSignatureTests(unittest.TestCase):
     """The signature is the one thing that has to be byte-perfect.
 
@@ -1833,7 +2395,7 @@ class PayFastCancelTests(unittest.TestCase):
             user["id"],
             status="active",
             current_period_end="2099-01-01T00:00:00Z",
-            stripe_subscription_id="tok_annual_1",
+            provider_subscription_id="tok_annual_1",
             provider="payfast",
         )
         return store, user
@@ -2156,6 +2718,10 @@ class WsgiBridgeTests(unittest.TestCase):
     with its own env file, because that is how cPanel starts a Python app.
     """
 
+    # Long enough for MIN_ADMIN_TOKEN_LENGTH, so the owner report and the
+    # internals in /api/health are reachable with it.
+    ADMIN_TOKEN = "wsgi-admin-token-0123456789abcdef"
+
     ENV_FILE_BODY = """\
 DB_PATH=%(tmp)s/wsgi.db
 DOCUMENTS_DIR=%(tmp)s/documents
@@ -2170,6 +2736,7 @@ PAYFAST_ITN_VERIFICATION=api
 PLAN_PRICE_AMOUNT=1200.00
 MAX_DOCUMENT_BYTES=4096
 ALLOW_MOCK_BILLING=0
+ADMIN_TOKEN=%(admin_token)s
 """
 
     @classmethod
@@ -2182,6 +2749,7 @@ ALLOW_MOCK_BILLING=0
                 "merchant_id": PAYFAST_MERCHANT_ID,
                 "merchant_key": PAYFAST_MERCHANT_KEY,
                 "passphrase": PAYFAST_PASSPHRASE,
+                "admin_token": cls.ADMIN_TOKEN,
             })
         cls.port = free_port()
         cls.base = "http://127.0.0.1:%d" % cls.port
@@ -2233,7 +2801,26 @@ ALLOW_MOCK_BILLING=0
         self.assertFalse(cfg["ephemeralJwtSecret"])
         self.assertTrue(cfg["payfastConfigured"])
         self.assertFalse(cfg["mockBilling"])
-        self.assertEqual(os.path.join(self.tmp, "wsgi.db"), cfg["dbPath"])
+        # /api/health is public, so the host and database path are withheld...
+        self.assertNotIn("dbPath", cfg)
+        self.assertNotIn("host", cfg)
+        self.assertNotIn("port", cfg)
+        # ...and only the owner token brings them back.
+        status, data = request(
+            "GET", "/api/health",
+            extra_headers={"X-Admin-Token": self.ADMIN_TOKEN},
+            base=self.base,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(os.path.join(self.tmp, "wsgi.db"), data["config"]["dbPath"])
+        # A wrong token is not a way in either.
+        status, data = request(
+            "GET", "/api/health",
+            extra_headers={"X-Admin-Token": "not-the-token-at-all-000000"},
+            base=self.base,
+        )
+        self.assertEqual(200, status)
+        self.assertNotIn("dbPath", data["config"])
 
     def test_static_pages_are_served_through_the_bridge(self):
         # These are the pages a visitor reaches on the API host: Apache hands
@@ -2251,6 +2838,27 @@ ALLOW_MOCK_BILLING=0
                      "/passenger_wsgi.py", "/server/data/wsgi.db"):
             status, _, _ = self.raw("GET", path)
             self.assertEqual(404, status, path)
+
+    def test_deploy_tooling_cannot_be_downloaded(self):
+        # deploy/invigismart-api.env holds JWT_SECRET and ADMIN_TOKEN, and the
+        # archive holds the whole app; the static handler used to serve both
+        # because neither ends in .py, .md, .db and neither starts with a dot.
+        for path in ("/deploy/invigismart-api.env", "/deploy/invigismart-api.zip",
+                     "/deploy/.deploy.env", "/deploy/make-api-env.py",
+                     "/data/invigismart.db", "/data/documents/anything.pdf"):
+            status, _, body = self.raw("GET", path)
+            self.assertEqual(404, status, path)
+            self.assertNotIn(b"JWT_SECRET", body, path)
+
+    def test_search_engine_files_are_served(self):
+        # Both are uploaded next to the pages (DEPLOY.md section 11) and a 404
+        # here means the landing page is not discoverable at all.
+        status, _, body = self.raw("GET", "/robots.txt")
+        self.assertEqual(200, status)
+        self.assertIn(b"Sitemap:", body)
+        status, _, body = self.raw("GET", "/sitemap.xml")
+        self.assertEqual(200, status)
+        self.assertIn(b"<urlset", body)
 
     def test_account_and_billing_endpoints_work(self):
         status, data = request(
@@ -2326,16 +2934,17 @@ ALLOW_MOCK_BILLING=0
         status, data = request("GET", "/api/nope", base=self.base)
         self.assertEqual(404, status)
         self.assertIn("error", data)
-        # The owner report travels the same bridge. Without ADMIN_TOKEN in this
-        # app's .env it must stay indistinguishable from an unknown path, even
-        # when a token is supplied - Passenger's routing is the one that matters.
+        # The owner report travels the same bridge. It is guarded by the token in
+        # this app's .env: a wrong one is refused, and never with the customer
+        # list. (When ADMIN_TOKEN is unset the endpoint answers 404 instead, which
+        # AdminOverviewTests covers.)
         status, data = request(
             "GET",
             "/api/admin/overview?token=" + ("t" * 40),
             base=self.base,
         )
-        self.assertEqual(404, status)
-        self.assertEqual("Unknown endpoint.", data["error"])
+        self.assertEqual(401, status)
+        self.assertEqual("admin_unauthorized", data.get("code"))
 
 
 class DeployArchiveTests(unittest.TestCase):
@@ -2419,6 +3028,185 @@ class DeployArchiveTests(unittest.TestCase):
         self.assertNotIn(".env", names)
 
 
+class StaticSiteArchiveTests(unittest.TestCase):
+    """deploy/upload-static.sh is the only thing that publishes the website.
+
+    Its file list is pinned here for the same reason the backend's is: a page or
+    an asset that nobody remembers to add to it is simply never uploaded, and the
+    live site keeps serving the old copy while the repository looks complete.
+    The archive mode (File Manager, no port 21) is built from that same list and
+    checked for real, into a temp directory.
+    """
+
+    SCRIPT = os.path.join(os.path.dirname(SERVER_DIR), "deploy", "upload-static.sh")
+
+    def site_files(self):
+        """The paths in SITE_FILES, minus the comments that explain them."""
+        with open(self.SCRIPT) as handle:
+            text = handle.read()
+        start = text.index("SITE_FILES=(")
+        end = text.index("\n)", start)
+        listed = []
+        for line in text[start:end].splitlines()[1:]:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                listed.append(line)
+        return listed
+
+    def test_every_listed_file_exists(self):
+        root = os.path.dirname(SERVER_DIR)
+        for name in self.site_files():
+            self.assertTrue(os.path.isfile(os.path.join(root, name)), name)
+
+    def test_the_htaccess_is_listed(self):
+        # It is what makes the extensionless /terms and /privacy links resolve,
+        # so a site uploaded without it 404s on two of its own pages.
+        self.assertIn(".htaccess", self.site_files())
+
+    def test_no_server_code_or_secrets_are_listed(self):
+        for name in self.site_files():
+            self.assertFalse(name.startswith("server/"), name)
+            self.assertFalse(name.startswith(".env"), name)
+            self.assertNotIn("deploy/", name, name)
+
+    def test_zip_mode_builds_the_same_list(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash is not available")
+        tmp = tempfile.mkdtemp(prefix="invigismart-site-")
+        archive = os.path.join(tmp, "site.zip")
+        try:
+            result = subprocess.run(
+                ["bash", self.SCRIPT, "--zip"],
+                env=dict(os.environ, ZIP_PATH=archive),
+                capture_output=True, text=True, timeout=120,
+            )
+            self.assertEqual(0, result.returncode, result.stderr[-600:])
+            with zipfile.ZipFile(archive) as bundle:
+                names = bundle.namelist()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        for name in self.site_files():
+            self.assertIn(name, names)
+        # The folder is an entry of its own so every extractor recreates it.
+        self.assertIn("assets/", names)
+        self.assertNotIn(".env", names)
+
+
+class StaticHeaderTests(unittest.TestCase):
+    """The .htaccess is the only place the static site's headers can be set.
+
+    Apache serves the pages from disk, so nothing in the Python app can add
+    them, and a header that is not in this file is simply not sent. The
+    directives are pinned here because shared hosting offers no other seam: a
+    silent deletion would only surface in a security scan months later.
+    """
+
+    PATH = os.path.join(os.path.dirname(SERVER_DIR), ".htaccess")
+
+    def config(self):
+        with open(self.PATH) as handle:
+            return handle.read()
+
+    def test_transport_and_framing_headers_are_set(self):
+        text = self.config()
+        self.assertIn('Header always set X-Content-Type-Options "nosniff"', text)
+        self.assertIn('Header always set X-Frame-Options "SAMEORIGIN"', text)
+        self.assertIn("Header always set Referrer-Policy", text)
+        self.assertIn("Header always set Permissions-Policy", text)
+        self.assertIn(
+            'Header always set Strict-Transport-Security "max-age=31536000"', text
+        )
+        self.assertIn("Header always unset X-Powered-By", text)
+        # The blocks are wrapped, so a host without the module still serves the
+        # site instead of answering 500 on every request.
+        self.assertIn("<IfModule mod_headers.c>", text)
+
+    def test_content_security_policy_allows_only_what_the_pages_use(self):
+        policy = ""
+        for line in self.config().splitlines():
+            if "Content-Security-Policy" in line:
+                policy = line.split('"')[1]
+        self.assertTrue(policy, "no Content-Security-Policy in .htaccess")
+
+        directives = {}
+        for part in policy.split(";"):
+            part = part.strip()
+            if part:
+                name, _, value = part.partition(" ")
+                directives[name] = value
+
+        self.assertEqual("'self'", directives["default-src"])
+        self.assertEqual("'none'", directives["object-src"])
+        self.assertEqual("'self'", directives["frame-ancestors"])
+        self.assertEqual("'self'", directives["base-uri"])
+        # The gateway's redirect and the tour video are the only off-site
+        # destinations the pages legitimately reach.
+        self.assertIn("https://www.payfast.co.za", directives["form-action"])
+        self.assertIn("https://sandbox.payfast.co.za", directives["form-action"])
+        self.assertIn("https://www.youtube-nocookie.com", directives["frame-src"])
+        self.assertIn("https://fonts.gstatic.com", directives["font-src"])
+        self.assertIn("https://fonts.googleapis.com", directives["style-src"])
+        # No third-party script origin: the libraries are self-hosted now.
+        self.assertNotIn("cdn.tailwindcss.com", directives["script-src"])
+        self.assertNotIn("unpkg.com", directives["script-src"])
+
+    def test_html_is_revalidated_but_versioned_libraries_are_cached(self):
+        text = self.config()
+        self.assertIn('ExpiresByType text/html "access plus 0 seconds"', text)
+        # Only a filename that carries the version may be cached for a year.
+        self.assertIn("max-age=31536000, immutable", text)
+        self.assertIn("tailwind-[0-9.]", text)
+
+
+class FtpPreflightDiagnosisTests(unittest.TestCase):
+    """A blocked IP must not be reported as a wrong password.
+
+    When the server's firewall (CSF/LFD on DirectAdmin) holds the laptop's
+    address, every port times out and curl exits (28) before the server says
+    anything. Both upload scripts used to answer that with "check FTP_HOST" or
+    "either the login is wrong" - advice that sends you to the panel to retype a
+    correct password. A fake curl that always fails with (28) pins the wording,
+    and pins the offer of the route that does not need port 21.
+    """
+
+    SCRIPTS = (
+        os.path.join(os.path.dirname(SERVER_DIR), "deploy", "upload-static.sh"),
+        os.path.join(os.path.dirname(SERVER_DIR), "deploy", "upload-passenger.sh"),
+    )
+
+    def test_a_dropped_connection_is_named_as_a_firewall_block(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash is not available")
+        tmp = tempfile.mkdtemp(prefix="invigismart-ftp-")
+        try:
+            fake = os.path.join(tmp, "curl")
+            with open(fake, "w") as handle:
+                handle.write(
+                    "#!/bin/sh\n"
+                    "echo 'curl: (28) Connection timed out after 20002 milliseconds' >&2\n"
+                    "exit 28\n"
+                )
+            os.chmod(fake, 0o755)
+            env = dict(os.environ,
+                       PATH=tmp + os.pathsep + os.environ.get("PATH", ""),
+                       FTP_USER="nobody@example.com",
+                       FTP_PASS="correct-but-never-sent")
+            for script in self.SCRIPTS:
+                result = subprocess.run(["bash", script, "--apply"], env=env,
+                                        capture_output=True, text=True, timeout=120)
+                name = os.path.basename(script)
+                self.assertEqual(1, result.returncode, name)
+                self.assertIn("holding this IP", result.stderr, name)
+                self.assertIn("--zip", result.stderr, name)
+                self.assertNotIn("Check FTP_HOST, the network and FTP_INSECURE",
+                                 result.stderr, name)
+                # The password must never reach the terminal, not even in a trace.
+                self.assertNotIn("correct-but-never-sent", result.stderr, name)
+                self.assertNotIn("correct-but-never-sent", result.stdout, name)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class ApiEnvTemplateTests(unittest.TestCase):
     """deploy/make-api-env.py writes the .env the live backend runs on.
 
@@ -2488,6 +3276,11 @@ class ApiEnvTemplateTests(unittest.TestCase):
         self.assertEqual(0o600, mode)
         # The owner report ships switched on, with a token nobody can guess.
         self.assertGreaterEqual(len(env["ADMIN_TOKEN"]), config.MIN_ADMIN_TOKEN_LENGTH)
+        # Reset links must land on the website origin, and the email keys must be
+        # present even when blank - otherwise the live API cannot send them.
+        self.assertEqual("https://invigismart.online", env["PASSWORD_RESET_BASE_URL"])
+        self.assertIn("SMTP_HOST", env)
+        self.assertIn("SMTP_PASSWORD", env)
 
         conf = config.Config(env=env)
         self.assertTrue(conf.public_host)
@@ -2496,8 +3289,41 @@ class ApiEnvTemplateTests(unittest.TestCase):
         self.assertFalse(conf.allow_mock_billing)
         self.assertTrue(conf.admin_overview_enabled)
         self.assertEqual([], conf.billing_fatal)
+        # No SMTP in this template: allowed, but it must be reported, not silent.
+        self.assertFalse(conf.smtp_configured)
+        self.assertTrue(conf.email_warnings)
         # Sandbox stays on until a purchase has worked end to end.
         self.assertTrue(conf.payfast_sandbox)
+
+    def test_smtp_settings_are_carried_over(self):
+        tmp = tempfile.mkdtemp(prefix="invigismart-env-")
+        try:
+            source = os.path.join(tmp, "source.env")
+            with open(source, "w") as handle:
+                for key, value in self.SOURCE:
+                    handle.write("%s=%s\n" % (key, value))
+                handle.write("SMTP_HOST=smtp.example.com\n")
+                handle.write("SMTP_PORT=25\n")
+                handle.write("SMTP_USER=relay\n")
+                handle.write("SMTP_PASSWORD=app-password\n")
+                handle.write("SMTP_FROM=noreply@invigismart.online\n")
+            out = os.path.join(tmp, "api.env")
+            result = self.run_script("--source", source, "--out", out)
+            self.assertEqual(0, result.returncode, result.stderr[-600:])
+            env = self.parse(out)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        self.assertEqual("smtp.example.com", env["SMTP_HOST"])
+        self.assertEqual("25", env["SMTP_PORT"])
+        self.assertEqual("relay", env["SMTP_USER"])
+        self.assertEqual("app-password", env["SMTP_PASSWORD"])
+        self.assertEqual("noreply@invigismart.online", env["SMTP_FROM"])
+        self.assertEqual("https://invigismart.online", env["PASSWORD_RESET_BASE_URL"])
+
+        conf = config.Config(env=env)
+        self.assertTrue(conf.smtp_configured)
+        self.assertEqual([], conf.email_warnings)
 
     def test_refuses_to_replace_the_live_secret_without_force(self):
         tmp = tempfile.mkdtemp(prefix="invigismart-env-")

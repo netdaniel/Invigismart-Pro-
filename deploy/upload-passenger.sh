@@ -91,16 +91,21 @@ BACKEND_FILES=(
   privacy.html
   terms.html
   api-base.js
+  favicon.ico
   assets/logo.svg
   assets/logo-mark.svg
   assets/timetable-import.js
   assets/exam-types.js
+  assets/tailwind-3.4.16.js
+  assets/lucide-0.451.0.min.js
+  assets/apple-touch-icon.png
   server/app.py
   server/config.py
   server/db.py
   server/billing.py
   server/documents.py
   server/examtypes.py
+  server/mailer.py
   server/payfast.py
   server/roster.py
   server/security.py
@@ -265,8 +270,26 @@ fi
 need_credentials || exit 1
 
 echo "checking login and remote directory..."
-if ! curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "$REMOTE_URL" >/dev/null 2>&1; then
+probe_rc=0
+curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" --list-only "$REMOTE_URL" \
+  >/dev/null 2>&1 || probe_rc=$?
+if [ "$probe_rc" -ne 0 ]; then
   echo "FTP preflight failed for $REMOTE_URL" >&2
+  # curl giving up before any FTP reply means the packets never arrived. That is
+  # the one cause the advice below cannot fix: a wrong password is answered with
+  # 530 and a wrong jail with 550, both of them server replies.
+  case "$probe_rc" in
+    6|7|28)
+      echo "  curl could not reach $FTP_HOST:21 (exit $probe_rc) - nothing answered." >&2
+      echo "  If every port on this host times out from this network while the same" >&2
+      echo "  ports answer from elsewhere (check-host.net/check-tcp), the firewall is" >&2
+      echo "  holding this IP - CSF/LFD on DirectAdmin, usually after repeated failed" >&2
+      echo "  logins. Unblock it (csf -dr <ip>, DEPLOY.md 13.6), upload from another" >&2
+      echo "  network, or skip port 21 entirely:" >&2
+      echo "      ./deploy/upload-passenger.sh --zip  # File Manager, same files" >&2
+      exit 1
+      ;;
+  esac
   echo "Either the login is wrong, or this account cannot see $REMOTE_PATH." >&2
   echo "  - run ./deploy/upload-passenger.sh --probe to see what it *can* see" >&2
   echo "  - an FTP account is jailed to the Path it was created with, and cannot" >&2

@@ -31,4 +31,67 @@ DirectoryIndex landing.html
   # it and the address bar matches what the links promise.
   RewriteRule ^login/?$ landing.html [L]
   RewriteRule ^signup/?$ landing.html [L]
+
+  # /reset-password?token=... -> the landing page, which opens the reset pane
+  # with the token from the emailed link. Keep the URL and its query string.
+  RewriteRule ^reset-password/?$ landing.html [L]
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# Response headers
+# ---------------------------------------------------------------------------
+# Apache serves these pages straight from disk, so the Python app cannot set
+# their headers: they are set here or nowhere. Each block is wrapped in an
+# <IfModule>, so a host without the module still serves the site normally.
+<IfModule mod_headers.c>
+  # Never let a browser sniff a type: a document that "looks like" HTML is a
+  # script execution primitive.
+  Header always set X-Content-Type-Options "nosniff"
+  # The dashboard holds a session token; another site must not frame it.
+  Header always set X-Frame-Options "SAMEORIGIN"
+  # The password-reset link carries its token in the query string. Send the
+  # origin to other sites, never the full URL.
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  # This site uses none of these device APIs.
+  Header always set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+  # Ignored over plain HTTP, so it costs nothing before the HTTPS redirect
+  # fires and pins the certificate for a year once seen over TLS.
+  Header always set Strict-Transport-Security "max-age=31536000"
+  Header always unset X-Powered-By
+  Header always unset Server
+
+  # Everything loads from this origin except the web fonts, the YouTube tour
+  # video and the payment gateway's redirect. 'unsafe-inline' is required by
+  # the onclick handlers the pages already use and by the Tailwind runtime,
+  # which compiles the utility classes in the browser; 'unsafe-eval' is what
+  # that runtime needs to build its stylesheet. That is weaker than a
+  # precompiled build would allow, but it still stops an injected <script> from
+  # any other origin from running on a page that holds a session token.
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self' https://www.payfast.co.za https://sandbox.payfast.co.za; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self' https://www.youtube-nocookie.com; connect-src 'self' https://invigismart.online https://api.invigismart.online; upgrade-insecure-requests"
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# Caching
+# ---------------------------------------------------------------------------
+# HTML holds the copy, the pricing and the app shell, so it is revalidated on
+# every visit; the assets can be cached, because a change to one is a deploy.
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType application/xml "access plus 0 seconds"
+  ExpiresByType text/plain "access plus 0 seconds"
+  ExpiresByType text/css "access plus 1 day"
+  ExpiresByType application/javascript "access plus 1 day"
+  ExpiresByType text/javascript "access plus 1 day"
+  ExpiresByType image/svg+xml "access plus 1 day"
+  ExpiresByType image/png "access plus 1 day"
+  ExpiresByType image/x-icon "access plus 1 day"
+</IfModule>
+
+# The two vendored libraries carry their version in the filename, so a new
+# release is a new URL: those two can be cached for a year and never checked.
+<IfModule mod_headers.c>
+  <FilesMatch "^(tailwind-[0-9.]+|lucide-[0-9.]+\.min)\.js$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
 </IfModule>

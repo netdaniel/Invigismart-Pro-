@@ -4,7 +4,8 @@
 #
 # The host (156.155.252.98) has no SSH - port 22 is closed - so rsync and
 # `git push` deploys are not available. FTPS (port 21, Pure-FTPd + explicit
-# TLS) is the only way in. That host is shared hosting: it cannot run the Flask
+# TLS) is the upload channel, or the --zip archive below for File Manager when
+# port 21 is unreachable. That host is shared hosting: it cannot run the Flask
 # backend, so this uploads the static site only.
 #
 #   server/ is deliberately NOT uploaded. Shared hosting cannot execute it, and
@@ -16,8 +17,12 @@
 #   ./deploy/upload-static.sh --verify            # check the live site, upload nothing
 #   ./deploy/upload-static.sh --apply             # upload
 #   ./deploy/upload-static.sh --apply --verify    # upload, then check over HTTPS
+#   ./deploy/upload-static.sh --zip               # no FTP: build a File Manager zip
 #
-# Credentials come from .deploy.env (gitignored) or the environment.
+# Credentials come from .deploy.env (gitignored) or the environment. FTP is not
+# the only way up: a plan with no usable FTP account, or a network whose packets
+# port 21 drops, can ship the same file list as one archive for File Manager's
+# Upload + Extract.
 
 set -euo pipefail
 
@@ -25,10 +30,12 @@ cd "$(dirname "$0")/.."
 
 APPLY=0
 VERIFY=0
+ZIP=0
 for arg in "$@"; do
   case "$arg" in
     --apply)   APPLY=1 ;;
     --verify)  VERIFY=1 ;;
+    --zip)     ZIP=1 ;;
     -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -78,22 +85,85 @@ SITE_FILES=(
   # Where the pages find the API. ships even when blank: without the file the
   # pages fall back to same-origin, which on this host has no backend.
   api-base.js
+  # Search-engine furniture. DEPLOY.md section 11 used to list these as missing:
+  # without them the landing page is only findable by word of mouth, and PayFast's
+  # account review looks for a public site that search engines can actually see.
+  robots.txt
+  sitemap.xml
   assets/logo.svg
   assets/logo-mark.svg
   assets/timetable-import.js
   assets/exam-types.js
+  # Pinned front-end libraries, self-hosted so a page that keeps its session
+  # token in localStorage never executes a script from another origin. The
+  # version is part of the filename, so a new release is a new URL and can be
+  # cached for a year (see .htaccess). The SRI hashes in the pages pin them.
+  assets/tailwind-3.4.16.js
+  assets/lucide-0.451.0.min.js
+  # Icons: /favicon.ico is what a browser asks for when a page names none, and
+  # iOS uses the 180px tile when a school adds the site to a home screen.
+  favicon.ico
+  assets/apple-touch-icon.png
 )
 
 for f in "${SITE_FILES[@]}"; do
   [ -f "$f" ] || { echo "missing site file: $f" >&2; exit 1; }
 done
 
+print_files() {
+  echo "files     : ${#SITE_FILES[@]}"
+  for f in "${SITE_FILES[@]}"; do
+    printf '            %-30s %8s bytes\n' "$f" "$(wc -c <"$f" | tr -d ' ')"
+  done
+}
+
+# File Manager route. A login that is blocked, missing, or jailed somewhere the
+# docroot is not is common enough that the website has to go up without port 21
+# at all: this builds the same list as one archive for DirectAdmin/cPanel's
+# Upload + Extract. Nothing secret is in it - every file here is already served
+# by the public website.
+if [ "$ZIP" -eq 1 ]; then
+  # ZIP_PATH overrides the output (the test suite builds into a temp dir).
+  ZIP_PATH="${ZIP_PATH:-deploy/invigismart-site.zip}"
+  echo "archive   : $ZIP_PATH  (uploaded by hand, no FTP)"
+  print_files
+  rm -f "$ZIP_PATH"
+  python3 - "$ZIP_PATH" "${SITE_FILES[@]}" <<'PY'
+import sys, zipfile
+
+archive, files = sys.argv[1], sys.argv[2:]
+# Write the folders as their own entries: DirectAdmin's extractor, unzip and
+# Windows Explorer then all recreate them instead of relying on implied parents.
+dirs = sorted({f.rsplit("/", 1)[0] for f in files if "/" in f})
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+    for d in dirs:
+        z.writestr(d + "/", "")
+    for f in files:
+        z.write(f, f)
+PY
+  echo
+  echo "built $ZIP_PATH - $(wc -c <"$ZIP_PATH" | tr -d ' ') bytes"
+  cat <<TXT
+
+Upload it without FTP:
+  1. DirectAdmin -> File Manager -> the docroot, the directory that already
+     holds index.html (on this host:
+     /home/shfckyzk/domains/invigismart.online/public_html).
+  2. Upload -> choose $ZIP_PATH -> Reload.
+  3. Tick the archive -> Extract -> Extract Files. Keep the prefilled path, so
+     index.html, .htaccess and assets/ land beside the copies already there.
+     Delete the archive afterwards.
+  4. File Manager -> Settings -> Show Hidden Files, then confirm .htaccess is
+     there: it is what makes /terms and /privacy resolve, and without it those
+     links 404 however correct the pages are.
+  5. ./deploy/verify-live.sh, from a network that can reach the site.
+TXT
+  exit 0
+fi
+
 echo "host      : $FTP_HOST  (FTPS, explicit TLS)"
 echo "remote dir: $REMOTE_URL"
-echo "files     : ${#SITE_FILES[@]}"
-for f in "${SITE_FILES[@]}"; do
-  printf '            %-30s %8s bytes\n' "$f" "$(wc -c <"$f")"
-done
+print_files
 
 # The site is fetched through public DNS, and the zone has been mid-move: while
 # two A records were live, a resolver that cached both hands out either one, so
@@ -107,6 +177,7 @@ verify_site() {
   echo "verifying over HTTPS:"
   local p code size ip stale=0
   for p in / /landing.html /privacy /terms /privacy.html /terms.html \
+           /app /login /signup /reset-password /robots.txt /sitemap.xml \
            /assets/timetable-import.js /assets/exam-types.js; do
     printf '  %-30s ' "$p"
     read -r code size ip < <(curl -s -o /dev/null \
@@ -160,17 +231,41 @@ if [ "$FTP_INSECURE" = "1" ]; then
   PROBE_OPTS+=(-k)
 fi
 echo "checking login and remote directory..."
-if ! probe_list=$(curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
-                     --list-only "$REMOTE_URL" 2>/dev/null); then
+probe_rc=0
+probe_list=$(curl "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
+                  --list-only "$REMOTE_URL" 2>/dev/null) || probe_rc=$?
+if [ "$probe_rc" -ne 0 ]; then
   # Re-run verbosely: curl collapses a 421 into "(28) Timeout" and never prints
   # the server's reply, which hides the real cause. The trace contains the
   # password, so it is captured into a variable and never printed.
+  trace_rc=0
   probe_trace=$(curl -v "${PROBE_OPTS[@]}" --user "$FTP_USER:$FTP_PASS" \
-                    --list-only "$REMOTE_URL" 2>&1 >/dev/null || true)
+                    --list-only "$REMOTE_URL" 2>&1 >/dev/null) || trace_rc=$?
   reply_code=$(printf '%s\n' "$probe_trace" | sed -n 's/^< \([0-9][0-9][0-9]\) .*/\1/p' | tail -n 1)
   reply_text=$(printf '%s\n' "$probe_trace" | sed -n 's/^< [0-9][0-9][0-9] //p' | tail -n 1)
   curl_err=$(printf '%s\n' "$probe_trace" | grep '^curl:' | tail -n 1 || true)
   echo "FTP preflight failed: ${reply_code:+$reply_code }${reply_text:-${curl_err:-no response from server}}" >&2
+  # No reply at all means the TCP connection never opened. That is the one
+  # failure that says nothing about the password or the directory: a wrong
+  # password answers 530 and a wrong jail answers 550, both server replies.
+  if [ -z "$reply_code" ]; then
+    case "$trace_rc" in
+      6)  echo "  $FTP_HOST does not resolve from this machine." >&2 ;;
+      7)  echo "  $FTP_HOST:21 refused the connection." >&2 ;;
+      28) echo "  Nothing answered on $FTP_HOST:21 within 20 seconds - the packets" >&2
+          echo "  are being dropped, not refused." >&2 ;;
+      *)  echo "  curl exited $trace_rc before the server sent an FTP reply." >&2 ;;
+    esac
+    echo "  The login was never offered, so the password and the jail are not in" >&2
+    echo "  question. If every port on this host times out from this network while" >&2
+    echo "  the same ports answer from elsewhere (check-host.net/check-tcp), the" >&2
+    echo "  server's firewall is holding this IP - CSF/LFD on DirectAdmin, usually" >&2
+    echo "  after repeated failed logins. Either unblock it (csf -dr <ip>), upload" >&2
+    echo "  from another network (a phone hotspot), or skip port 21 entirely:" >&2
+    echo "      ./deploy/upload-static.sh --zip     # File Manager, same files" >&2
+    echo "  DEPLOY.md 13.6 has the unblock commands." >&2
+    exit 1
+  fi
   case "$reply_code" in
     421)
       echo "  The FTP account's home directory is missing on the server." >&2

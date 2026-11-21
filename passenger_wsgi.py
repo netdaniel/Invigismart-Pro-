@@ -60,7 +60,8 @@ ENV_FILE = os.environ.get("INVIGISMART_ENV") or DEFAULT_ENV
 if not load_env(ENV_FILE):
     # Loud, because the fallback is a development configuration: an ephemeral
     # signing key (every restart signs everyone out) and a database beside the
-    # code. /api/health reports both as ephemeralJwtSecret and dbPath.
+    # code. /api/health reports the first as ephemeralJwtSecret; the database
+    # path is only in its payload for a caller that sends the owner token.
     sys.stderr.write(
         "[invigismart] WARNING: no env file at %s, so the app is running on the "
         "process environment alone. DEPLOY.md section 13 lists what must be in "

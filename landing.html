@@ -5,16 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Invigismart Pro &mdash; Exam Invigilation Rostering for Schools</title>
   <meta name="description" content="Build fair, conflict-free exam invigilation rosters in seconds. 1:30 invigilator ratios, no own-subject duty, no double-booking, printable teacher duty sheets and CSV exports.">
-  <!-- Same pinned libraries as the dashboard so the two pages look like one product -->
-  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
-  <script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.min.js"
-          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"
-          crossorigin="anonymous"></script>
+  <!-- Pinned libraries, served from this origin. These pages keep the session
+       token in localStorage, so a script fetched from a third party would run
+       with access to it; self-hosting also means the site still works when that
+       CDN is down or blocked. The version is in the filename, and the SRI hash
+       pins the bytes that ship: a corrupted upload is refused, not executed. -->
+  <script src="/assets/tailwind-3.4.16.js"
+          integrity="sha384-mS5Uq7sE90lgbBDN8xgf34ibEgbZo4gB3tfLY40ZRle+M188BQw8onzNHg6GUZaA"></script>
+  <script src="/assets/lucide-0.451.0.min.js"
+          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"></script>
   <!-- Brand: web fonts, favicon and the Invigismart Pro palette (sampled from the logo) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
   <script>
     /* Invigismart Pro brand palette. `brand` is the bright blue from the shield
        gradient, `navy` is the wordmark navy and `emerald` is remapped to the
@@ -1103,6 +1109,13 @@
                  class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
         </div>
 
+        <p id="authForgotRow" class="-mt-1 text-right">
+          <button type="button" onclick="showForgotPassword()"
+                  class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline">
+            Forgot password?
+          </button>
+        </p>
+
         <div id="authTermsGroup" class="hidden">
           <label for="authTerms" class="flex items-start gap-2.5 cursor-pointer select-none">
             <input type="checkbox" id="authTerms"
@@ -1124,13 +1137,62 @@
         </button>
       </form>
 
-      <div class="mt-4 text-center">
+      <!-- Forgot password: ask for the administrator email, never reveal whether
+           an account exists (the API answers the same sentence either way). -->
+      <form id="forgotForm" onsubmit="handleForgotSubmit(event)" class="space-y-4 hidden">
+        <p class="text-sm text-slate-500 leading-relaxed">
+          Enter the administrator email for your school. If an account exists, we
+          will email a link you can use once to choose a new password.
+        </p>
+        <div>
+          <label for="forgotEmail" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Administrator Email</label>
+          <input type="email" id="forgotEmail" required autocomplete="username" placeholder="admin@westridge.edu"
+                 class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+        </div>
+        <p id="forgotMessage" class="hidden text-xs font-medium rounded-lg px-3 py-2"></p>
+        <button type="submit" id="forgotSubmitBtn"
+                class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2">
+          <i data-lucide="mail" class="w-4 h-4"></i> <span id="forgotSubmitLabel">Email me a reset link</span>
+        </button>
+        <button type="button" onclick="showLoginPane()"
+                class="w-full text-xs font-semibold text-slate-500 hover:text-indigo-600 underline">
+          Back to sign in
+        </button>
+      </form>
+
+      <!-- Reset password: opened from the emailed link (?token=...). -->
+      <form id="resetForm" onsubmit="handleResetSubmit(event)" class="space-y-4 hidden">
+        <p class="text-sm text-slate-500 leading-relaxed">
+          Choose a new password for your account. Use at least 8 characters.
+        </p>
+        <div>
+          <label for="resetPassword" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">New password</label>
+          <input type="password" id="resetPassword" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"
+                 class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+        </div>
+        <div>
+          <label for="resetPasswordConfirm" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Confirm new password</label>
+          <input type="password" id="resetPasswordConfirm" required minlength="8" autocomplete="new-password" placeholder="Type it again"
+                 class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+        </div>
+        <p id="resetMessage" class="hidden text-xs font-medium rounded-lg px-3 py-2"></p>
+        <button type="submit" id="resetSubmitBtn"
+                class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2">
+          <i data-lucide="key-round" class="w-4 h-4"></i> <span id="resetSubmitLabel">Set new password</span>
+        </button>
+        <button type="button" onclick="showLoginPane()"
+                class="w-full text-xs font-semibold text-slate-500 hover:text-indigo-600 underline">
+          Back to sign in
+        </button>
+      </form>
+
+      <div id="authToggleWrap" class="mt-4 text-center">
         <button type="button" onclick="toggleAuthMode()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline">
           <span id="authToggleLabel">Need an account? Create a school account</span>
         </button>
       </div>
 
-      <div class="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
+      <div id="authFootnoteWrap" class="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
         <p id="authFootnote" class="text-xs text-slate-400">
           New schools start with a <span data-trial-days="14">14</span>-day free trial &mdash; no card required.
         </p>
@@ -1301,6 +1363,10 @@
        ========================================================= */
     var authMode = 'login';
     var authIntent = 'trial';
+    // Which form the modal is showing: the login/signup form, the request-a-link
+    // form, or the choose-a-new-password form opened from the emailed link.
+    var authPane = 'auth';
+    var passwordResetToken = '';
 
     function setAuthMessage(text) {
       var el = document.getElementById('authMessage');
@@ -1309,8 +1375,30 @@
       el.classList.toggle('hidden', !text);
     }
 
+    // Errors are red, confirmations green. One helper keeps both reset panes
+    // from needing their own colour bookkeeping.
+    function setPaneMessage(el, text, kind) {
+      if (!el) return;
+      if (!text) {
+        el.textContent = '';
+        el.className = 'hidden';
+        return;
+      }
+      el.className = 'text-xs font-medium rounded-lg px-3 py-2 ' + (kind === 'success'
+        ? 'text-emerald-700 bg-emerald-50 border border-emerald-100'
+        : 'text-red-600 bg-red-50 border border-red-100');
+      el.textContent = text;
+    }
+
     function applyAuthUi() {
       var signup = authMode === 'signup';
+      var onAuth = authPane === 'auth';
+      document.getElementById('authForm').classList.toggle('hidden', !onAuth);
+      document.getElementById('forgotForm').classList.toggle('hidden', authPane !== 'forgot');
+      document.getElementById('resetForm').classList.toggle('hidden', authPane !== 'reset');
+      document.getElementById('authToggleWrap').classList.toggle('hidden', !onAuth);
+      document.getElementById('authFootnoteWrap').classList.toggle('hidden', !onAuth);
+      document.getElementById('authForgotRow').classList.toggle('hidden', !onAuth || signup);
       document.getElementById('authSchoolGroup').classList.toggle('hidden', !signup);
       document.getElementById('authTermsGroup').classList.toggle('hidden', !signup);
       // Consent is opt-in and re-required on every fresh signup attempt.
@@ -1318,42 +1406,194 @@
         var terms = document.getElementById('authTerms');
         if (terms) terms.checked = false;
       }
-      document.getElementById('authTitle').textContent = signup
-        ? 'Create your school account' : 'Welcome back';
-      document.getElementById('authSubtitle').textContent = signup
-        ? 'Full access for ' + TRIAL_DAYS + ' days \u2014 no card required'
-        : 'Sign in to your school dashboard';
-      document.getElementById('authSubmitLabel').textContent = signup
-        ? (authIntent === 'buy' ? 'Create account & buy licence' : 'Create account & start trial')
-        : 'Sign in to dashboard';
-      document.getElementById('authToggleLabel').textContent = signup
-        ? 'Already have an account? Log in instead'
-        : 'New school? Create an account and start the free trial';
-      document.getElementById('authFootnote').innerHTML = signup
-        ? 'Every feature is included in the trial; duty sheets and exports are watermarked as evaluation copies. Buy the annual licence at any time for clean exports.'
-        : 'Paid customer? Use the email and password you registered with.';
+      if (authPane === 'forgot') {
+        document.getElementById('authTitle').textContent = 'Reset your password';
+        document.getElementById('authSubtitle').textContent =
+          'We will email you a secure, single-use link';
+      } else if (authPane === 'reset') {
+        document.getElementById('authTitle').textContent = 'Choose a new password';
+        document.getElementById('authSubtitle').textContent =
+          'Then sign in with your new password';
+      } else {
+        document.getElementById('authTitle').textContent = signup
+          ? 'Create your school account' : 'Welcome back';
+        document.getElementById('authSubtitle').textContent = signup
+          ? 'Full access for ' + TRIAL_DAYS + ' days \u2014 no card required'
+          : 'Sign in to your school dashboard';
+        document.getElementById('authSubmitLabel').textContent = signup
+          ? (authIntent === 'buy' ? 'Create account & buy licence' : 'Create account & start trial')
+          : 'Sign in to dashboard';
+        document.getElementById('authToggleLabel').textContent = signup
+          ? 'Already have an account? Log in instead'
+          : 'New school? Create an account and start the free trial';
+        document.getElementById('authFootnote').innerHTML = signup
+          ? 'Every feature is included in the trial; duty sheets and exports are watermarked as evaluation copies. Buy the annual licence at any time for clean exports.'
+          : 'Paid customer? Use the email and password you registered with.';
+      }
+    }
+
+    function showAuthModal() {
+      document.getElementById('authModal').classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
     }
 
     function openAuth(mode) {
       authMode = (mode === 'signup') ? 'signup' : 'login';
       if (authMode === 'login') authIntent = 'trial';
+      authPane = 'auth';
+      passwordResetToken = '';
       setAuthMessage('');
+      setPaneMessage(document.getElementById('forgotMessage'), '');
+      setPaneMessage(document.getElementById('resetMessage'), '');
       applyAuthUi();
-      document.getElementById('authModal').classList.remove('hidden');
+      showAuthModal();
       var first = document.getElementById(authMode === 'signup' ? 'authSchoolName' : 'authEmail');
       if (first && first.focus) first.focus();
-      if (window.lucide) lucide.createIcons();
     }
 
     function closeAuth() {
       document.getElementById('authModal').classList.add('hidden');
       setAuthMessage('');
+      authPane = 'auth';
+      passwordResetToken = '';
     }
 
     function toggleAuthMode() {
       authMode = (authMode === 'signup') ? 'login' : 'signup';
+      authPane = 'auth';
       setAuthMessage('');
       applyAuthUi();
+    }
+
+    /* ---- forgot password ----------------------------------------------------
+       The request form answers the same way whether or not the address exists,
+       so it cannot be used to find out which schools have accounts. The reset
+       form only accepts a token from the emailed link. */
+    function showForgotPassword() {
+      authMode = 'login';
+      authPane = 'forgot';
+      passwordResetToken = '';
+      var typed = document.getElementById('authEmail').value.trim();
+      var target = document.getElementById('forgotEmail');
+      if (typed) target.value = typed;
+      setPaneMessage(document.getElementById('forgotMessage'), '');
+      document.getElementById('forgotSubmitLabel').textContent = 'Email me a reset link';
+      document.getElementById('forgotSubmitBtn').disabled = false;
+      applyAuthUi();
+      showAuthModal();
+      if (target.focus) target.focus();
+    }
+
+    function showLoginPane() {
+      authPane = 'auth';
+      passwordResetToken = '';
+      setPaneMessage(document.getElementById('forgotMessage'), '');
+      setPaneMessage(document.getElementById('resetMessage'), '');
+      document.getElementById('forgotSubmitLabel').textContent = 'Email me a reset link';
+      document.getElementById('forgotSubmitBtn').disabled = false;
+      document.getElementById('resetSubmitLabel').textContent = 'Set new password';
+      document.getElementById('resetSubmitBtn').disabled = false;
+      document.getElementById('resetPassword').value = '';
+      document.getElementById('resetPasswordConfirm').value = '';
+      document.getElementById('authPassword').value = '';
+      applyAuthUi();
+      showAuthModal();
+      var email = document.getElementById('authEmail');
+      if (email && email.focus) email.focus();
+    }
+
+    function showResetPane(token) {
+      authMode = 'login';
+      authPane = 'reset';
+      passwordResetToken = token || '';
+      setPaneMessage(
+        document.getElementById('resetMessage'),
+        passwordResetToken ? '' : 'This reset link is incomplete. Request a new one.',
+        passwordResetToken ? '' : 'error'
+      );
+      applyAuthUi();
+      showAuthModal();
+      var first = document.getElementById('resetPassword');
+      if (passwordResetToken && first && first.focus) first.focus();
+    }
+
+    function handleForgotSubmit(e) {
+      e.preventDefault();
+      var email = document.getElementById('forgotEmail').value.trim();
+      var message = document.getElementById('forgotMessage');
+      var button = document.getElementById('forgotSubmitBtn');
+      var label = document.getElementById('forgotSubmitLabel');
+      if (!email) {
+        setPaneMessage(message, 'Enter the email address you registered with.', 'error');
+        return;
+      }
+      setPaneMessage(message, '');
+      button.disabled = true;
+      label.textContent = 'Sending...';
+
+      api('/api/auth/forgot-password', { method: 'POST', body: { email: email } })
+        .then(function (data) {
+          setPaneMessage(
+            message,
+            (data && data.message) || 'If that email belongs to an account, a reset link is on its way.',
+            'success'
+          );
+          label.textContent = 'Email me another link';
+          button.disabled = false;
+        })
+        .catch(function (err) {
+          setPaneMessage(message, (err && err.message) || 'That did not work. Please try again.', 'error');
+          label.textContent = 'Email me a reset link';
+          button.disabled = false;
+        });
+    }
+
+    function handleResetSubmit(e) {
+      e.preventDefault();
+      var password = document.getElementById('resetPassword').value;
+      var confirm = document.getElementById('resetPasswordConfirm').value;
+      var message = document.getElementById('resetMessage');
+      var button = document.getElementById('resetSubmitBtn');
+      var label = document.getElementById('resetSubmitLabel');
+
+      if (!passwordResetToken) {
+        setPaneMessage(message, 'This reset link is incomplete. Request a new one.', 'error');
+        return;
+      }
+      if (password.length < 8) {
+        setPaneMessage(message, 'Use at least 8 characters.', 'error');
+        return;
+      }
+      if (password !== confirm) {
+        setPaneMessage(message, 'The two passwords do not match.', 'error');
+        return;
+      }
+
+      setPaneMessage(message, '');
+      button.disabled = true;
+      label.textContent = 'Saving...';
+
+      api('/api/auth/reset-password', {
+        method: 'POST',
+        body: { token: passwordResetToken, password: password }
+      })
+        .then(function (data) {
+          // The link is single-use; forget it so a second submit cannot try it.
+          passwordResetToken = '';
+          document.getElementById('resetPassword').value = '';
+          document.getElementById('resetPasswordConfirm').value = '';
+          setPaneMessage(
+            message,
+            (data && data.message) || 'Your password has been changed. You can sign in now.',
+            'success'
+          );
+          label.textContent = 'Password changed';
+        })
+        .catch(function (err) {
+          setPaneMessage(message, (err && err.message) || 'That did not work. Please try again.', 'error');
+          label.textContent = 'Set new password';
+          button.disabled = false;
+        });
     }
 
     function startTrial() {
@@ -1467,7 +1707,14 @@
       if (!action && (path === '/login' || path === '/signup')) {
         action = path === '/signup' ? 'signup' : 'login';
       }
-      if (action === 'login' || action === 'signup') {
+      if (path === '/reset-password') {
+        // An emailed link carries ?token=...; without one, offer to send a link
+        // instead of showing a form that cannot work.
+        if (params.get('token')) showResetPane(params.get('token'));
+        else showForgotPassword();
+      } else if (action === 'forgot') {
+        showForgotPassword();
+      } else if (action === 'login' || action === 'signup') {
         authIntent = 'trial';
         openAuth(action);
       }

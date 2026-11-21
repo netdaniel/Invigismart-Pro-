@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   status                 TEXT NOT NULL,
   current_period_end     TEXT,
   stripe_customer_id     TEXT,
-  stripe_subscription_id TEXT,
+  provider_subscription_id TEXT,
   updated_at             TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -62,9 +62,21 @@ CREATE TABLE IF NOT EXISTS documents (
   size       INTEGER NOT NULL,
   created_at TEXT NOT NULL
 );
+-- Forgot-password links. Only a SHA-256 hash of the emailed token is stored, so
+-- a leaked database cannot be used to reset an account's password. Rows are
+-- single-use (used_at) and short-lived (expires_at).
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_subs_customer ON subscriptions(stripe_customer_id);
 CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
+CREATE INDEX IF NOT EXISTS idx_password_resets_expiry ON password_resets(expires_at);
 """
 
 
@@ -102,10 +114,38 @@ class Store:
         place - otherwise the first paying school's renewal would fail.
         """
         self._ensure_column("subscriptions", "provider", "TEXT")
+        # The recurring token used to live in a column named after Stripe, back
+        # when Stripe was the only gateway. Renaming it in SCHEMA only helps a
+        # database created from now on, so an existing one is upgraded here and
+        # its tokens are copied across before anything reads them.
+        self._ensure_column("subscriptions", "provider_subscription_id", "TEXT")
+        self._copy_legacy_subscription_id()
         # Who is actually using the dashboard. Older databases have neither
         # column; both stay NULL until the account next signs in.
         self._ensure_column("users", "last_login_at", "TEXT")
         self._ensure_column("users", "last_seen_at", "TEXT")
+
+    def _copy_legacy_subscription_id(self):
+        """Move the recurring token out of the old Stripe-named column.
+
+        The legacy column stays (NULL in a database created by this build)
+        rather than being dropped: not every SQLite has DROP COLUMN, and a
+        rollback to the previous release would otherwise break on its own
+        ``SELECT *``.
+        """
+        columns = [
+            row[1] for row in self._conn().execute("PRAGMA table_info(subscriptions)")
+        ]
+        if "stripe_subscription_id" not in columns:
+            return
+        with self._write_lock:
+            self._conn().execute(
+                "UPDATE subscriptions"
+                " SET provider_subscription_id = stripe_subscription_id"
+                " WHERE provider_subscription_id IS NULL"
+                " AND stripe_subscription_id IS NOT NULL"
+            )
+            self._conn().commit()
 
     def _ensure_column(self, table, column, declaration):
         existing = [row[1] for row in self._conn().execute("PRAGMA table_info(%s)" % table)]
@@ -182,6 +222,72 @@ class Store:
             )
             self._conn().commit()
 
+    # -- password reset links -------------------------------------------------
+    def create_password_reset(self, user_id, token_hash, expires_at):
+        """Store a new single-use reset token, invalidating older unused ones.
+
+        A school that clicks "forgot password" twice should end up with one live
+        link, not two: whichever mailbox copy is older must stop working.
+        """
+        with self._write_lock:
+            # Expired links are dead weight; clear them on the next request so
+            # the table cannot grow for ever on a busy deployment.
+            self._conn().execute(
+                "DELETE FROM password_resets WHERE expires_at <= ?", (utcnow_iso(),)
+            )
+            self._conn().execute(
+                "DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL",
+                (user_id,),
+            )
+            self._conn().execute(
+                "INSERT INTO password_resets (token_hash, user_id, created_at,"
+                " expires_at) VALUES (?, ?, ?, ?)",
+                (token_hash, user_id, utcnow_iso(), expires_at),
+            )
+            self._conn().commit()
+
+    def get_password_reset(self, token_hash):
+        """Return a live (unused, unexpired) reset row, or None."""
+        row = self._conn().execute(
+            "SELECT * FROM password_resets WHERE token_hash = ?"
+            " AND used_at IS NULL AND expires_at > ?",
+            (token_hash, utcnow_iso()),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def reset_password_with_token(self, token_hash, pw_hash):
+        """Consume a reset token and set the new password in one transaction.
+
+        Returning the user id makes the caller's success path explicit; None
+        means the link was already used, expired or never existed. Checking and
+        consuming under the same write lock stops one link resetting a password
+        twice when two requests arrive together.
+        """
+        now = utcnow_iso()
+        with self._write_lock:
+            row = self._conn().execute(
+                "SELECT user_id FROM password_resets WHERE token_hash = ?"
+                " AND used_at IS NULL AND expires_at > ?",
+                (token_hash, now),
+            ).fetchone()
+            if not row:
+                return None
+            user_id = row["user_id"]
+            self._conn().execute(
+                "UPDATE users SET pw_hash = ? WHERE id = ?", (pw_hash, user_id)
+            )
+            self._conn().execute(
+                "UPDATE password_resets SET used_at = ? WHERE token_hash = ?",
+                (now, token_hash),
+            )
+            # Any other outstanding link for this account dies with this one.
+            self._conn().execute(
+                "DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL",
+                (user_id,),
+            )
+            self._conn().commit()
+            return user_id
+
     # -- "who is actually using it" -------------------------------------------
     def mark_login(self, user_id):
         """Record a successful sign-in: last_login_at and last_seen_at move together.
@@ -245,15 +351,16 @@ class Store:
         status=None,
         current_period_end=None,
         stripe_customer_id=None,
-        stripe_subscription_id=None,
+        provider_subscription_id=None,
         provider=None,
         clear_period_end=False,
     ):
         """Write the authoritative subscription row.
 
-        The two *_id columns are named after Stripe for historical reasons but
-        hold whichever gateway is live: for PayFast the subscription id is the
-        recurring `token` that the ITN and the recurring API both use.
+        ``stripe_customer_id`` keeps its historical name (it predates the second
+        gateway); ``provider_subscription_id`` holds whichever gateway is live.
+        For PayFast that is the recurring ``token`` the ITN and the recurring API
+        both use.
         """
         existing = self.get_subscription(user_id) or {}
 
@@ -272,21 +379,23 @@ class Store:
                 current_period_end, "current_period_end"
             ),
             "stripe_customer_id": pick(stripe_customer_id, "stripe_customer_id"),
-            "stripe_subscription_id": pick(stripe_subscription_id, "stripe_subscription_id"),
+            "provider_subscription_id": pick(
+                provider_subscription_id, "provider_subscription_id"
+            ),
             "provider": pick(provider, "provider"),
             "updated_at": utcnow_iso(),
         }
         with self._write_lock:
             self._conn().execute(
                 "INSERT INTO subscriptions (user_id, plan, status, current_period_end,"
-                " stripe_customer_id, stripe_subscription_id, provider, updated_at)"
+                " stripe_customer_id, provider_subscription_id, provider, updated_at)"
                 " VALUES (:user_id, :plan, :status, :current_period_end,"
-                " :stripe_customer_id, :stripe_subscription_id, :provider, :updated_at)"
+                " :stripe_customer_id, :provider_subscription_id, :provider, :updated_at)"
                 " ON CONFLICT(user_id) DO UPDATE SET"
                 " plan=excluded.plan, status=excluded.status,"
                 " current_period_end=excluded.current_period_end,"
                 " stripe_customer_id=excluded.stripe_customer_id,"
-                " stripe_subscription_id=excluded.stripe_subscription_id,"
+                " provider_subscription_id=excluded.provider_subscription_id,"
                 " provider=excluded.provider,"
                 " updated_at=excluded.updated_at",
                 record,

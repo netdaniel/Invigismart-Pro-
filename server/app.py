@@ -21,16 +21,18 @@ import os
 import re
 import sys
 import threading
+import time
 import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import billing
 import documents
 import examtypes
+import mailer
 import payfast
 import roster
 import security
@@ -43,6 +45,29 @@ STORE = Store(CONFIG.db_path)
 # simultaneous uploads from both passing the last free slot.
 DOCUMENT_LOCK = threading.Lock()
 
+# Forgot-password requests are throttled per email address, in memory. There is
+# no mail queue and no rate limiter in this server, so without this a single
+# script could ask for a reset in a loop and flood a school's inbox. Keyed by
+# address (not IP) so a whole staff room behind one NAT still gets its link.
+RESET_LOCK = threading.Lock()
+RESET_REQUESTS = {}
+
+# Failed sign-ins, counted per (address, client IP) in memory. Keyed on both so
+# one teacher's typo cannot lock a whole staff room out behind a single NAT
+# address, and so a distributed attack still needs a fresh IP for every few
+# guesses. A per-address counter alone would let anyone lock a school out of its
+# own dashboard with five requests.
+LOGIN_LOCK = threading.Lock()
+LOGIN_FAILURES = {}
+LOGIN_TRACKED_LIMIT = 4096
+
+# The same reply whether or not the address belongs to an account: a reset form
+# that answers "no such user" is an account-enumeration oracle.
+FORGOT_PASSWORD_MESSAGE = (
+    "If that email belongs to an account, we've sent a link to reset the "
+    "password. Check the inbox (and the spam folder) for it."
+)
+
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -53,6 +78,9 @@ STATIC_TYPES = {
     ".png": "image/png",
     ".ico": "image/x-icon",
     ".txt": "text/plain; charset=utf-8",
+    # sitemap.xml: without this it would be served as application/octet-stream,
+    # which some crawlers download instead of parsing.
+    ".xml": "application/xml; charset=utf-8",
 }
 
 
@@ -75,6 +103,93 @@ def is_valid_password(password):
 def _megabytes(value):
     """Human-readable size for quota errors (10 MB, 1.5 MB, ...)."""
     return "%g MB" % round(float(value) / (1024.0 * 1024.0), 1)
+
+
+def password_reset_throttled(email):
+    """True when this address asked too recently; the caller stays silent.
+
+    The check and the stamp happen under one lock, so two simultaneous requests
+    cannot both pass. When the map grows past a few thousand entries the stale
+    ones are swept, keeping a long-running server's memory bounded.
+    """
+    interval = CONFIG.password_reset_throttle
+    if interval <= 0:
+        return False
+    now = time.time()
+    with RESET_LOCK:
+        if len(RESET_REQUESTS) > 2048:
+            for key, stamp in list(RESET_REQUESTS.items()):
+                if now - stamp >= interval:
+                    RESET_REQUESTS.pop(key, None)
+            if len(RESET_REQUESTS) > 4096:
+                # A flood of unique addresses outran memory being useful: drop
+                # the cooldown state rather than grow without limit.
+                RESET_REQUESTS.clear()
+        last = RESET_REQUESTS.get(email)
+        if last is not None and now - last < interval:
+            return True
+        RESET_REQUESTS[email] = now
+    return False
+
+
+def _login_key(email, client_ip):
+    return "%s|%s" % ((email or "").strip().lower(), client_ip or "")
+
+
+def _login_sweep(now, lockout):
+    """Drop counters whose window has closed, so the map cannot grow forever."""
+    for key, entry in list(LOGIN_FAILURES.items()):
+        if now - entry["start"] >= lockout and entry["until"] <= now:
+            LOGIN_FAILURES.pop(key, None)
+
+
+def login_retry_after(email, client_ip):
+    """Seconds a caller must wait before trying again, or 0 when it may now."""
+    max_attempts = CONFIG.login_max_attempts
+    lockout = CONFIG.login_lockout_seconds
+    if max_attempts <= 0 or lockout <= 0:
+        return 0
+    now = time.time()
+    with LOGIN_LOCK:
+        entry = LOGIN_FAILURES.get(_login_key(email, client_ip))
+        if not entry or entry["until"] <= now:
+            return 0
+        return int(entry["until"] - now) + 1
+
+
+def note_login_failure(email, client_ip):
+    """Count one failure; the attempt that reaches the cap starts the lockout.
+
+    Counters reset on a fixed window (``login_lockout_seconds`` from the first
+    failure in the run), so a guesser who spaces attempts out - one every few
+    minutes, forever - still meets the cap instead of never reaching it.
+    """
+    max_attempts = CONFIG.login_max_attempts
+    lockout = CONFIG.login_lockout_seconds
+    if max_attempts <= 0 or lockout <= 0:
+        return
+    now = time.time()
+    key = _login_key(email, client_ip)
+    with LOGIN_LOCK:
+        if len(LOGIN_FAILURES) > LOGIN_TRACKED_LIMIT:
+            _login_sweep(now, lockout)
+            if len(LOGIN_FAILURES) > LOGIN_TRACKED_LIMIT * 2:
+                # Unique-address flood: keep serving rather than grow without
+                # limit, exactly as the reset cooldown does.
+                LOGIN_FAILURES.clear()
+        entry = LOGIN_FAILURES.get(key)
+        if entry is None or now - entry["start"] >= lockout:
+            entry = {"count": 0, "start": now, "until": 0.0}
+        entry["count"] += 1
+        if entry["count"] >= max_attempts:
+            entry["until"] = now + lockout
+        LOGIN_FAILURES[key] = entry
+
+
+def clear_login_failures(email, client_ip):
+    """A correct password proves the run was typos, so forget the count."""
+    with LOGIN_LOCK:
+        LOGIN_FAILURES.pop(_login_key(email, client_ip), None)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -189,13 +304,123 @@ class Handler(BaseHTTPRequestHandler):
     def _api_login(self, body):
         email = str(body.get("email") or "").strip().lower()
         password = body.get("password") or ""
+        # Passenger gives the handler the real REMOTE_ADDR (see wsgi_app.py), so
+        # the socket peer is the visitor, not a proxy.
+        client_ip = self.client_address[0] if self.client_address else ""
+        # Checked before the hash: PBKDF2 is deliberately expensive, and a
+        # blocked caller must not be able to spend it once per request either.
+        wait = login_retry_after(email, client_ip)
+        if wait:
+            minutes = max(1, int((wait + 59) / 60))
+            raise ApiError(
+                429,
+                "Too many failed sign-in attempts. Try again in %d minute%s, or "
+                "reset your password." % (minutes, "" if minutes == 1 else "s"),
+                code="too_many_attempts",
+            )
         user = STORE.get_user_by_email(email)
         if not user or not security.verify_password(password, user.get("pw_hash")):
+            note_login_failure(email, client_ip)
             raise ApiError(401, "Invalid email or password.")
+        clear_login_failures(email, client_ip)
         # Only a successful sign-in is recorded: a failed attempt says nothing
         # about who is using the product, and the IP is already in the access log.
         STORE.mark_login(user["id"])
         self._json(200, self._session_payload(user))
+
+    # ---- password reset ----------------------------------------------------
+    def _api_forgot_password(self, body):
+        """Email a single-use reset link, without confirming the account exists.
+
+        Every branch answers 200 with the same sentence: a 404 for an unknown
+        address would tell anyone who types an email whether that school uses
+        this product. Delivery failures are logged for the operator and never
+        change the reply.
+        """
+        email = str(body.get("email") or "").strip().lower()
+        if not is_valid_email(email):
+            raise ApiError(400, "A valid email address is required.")
+        if password_reset_throttled(email):
+            self._json(200, {"ok": True, "message": FORGOT_PASSWORD_MESSAGE})
+            return
+        user = STORE.get_user_by_email(email)
+        if not user:
+            self._json(200, {"ok": True, "message": FORGOT_PASSWORD_MESSAGE})
+            return
+
+        token = security.new_reset_token()
+        expires_at = billing.to_iso(
+            billing.utcnow()
+            + datetime.timedelta(seconds=CONFIG.password_reset_ttl)
+        )
+        STORE.create_password_reset(
+            user["id"], security.hash_reset_token(token), expires_at
+        )
+        reset_url = "%s/reset-password?token=%s" % (
+            CONFIG.password_reset_base_url,
+            quote(token, safe=""),
+        )
+
+        if CONFIG.smtp_configured:
+            try:
+                mailer.send_password_reset(
+                    CONFIG, email, reset_url, school=user.get("school") or ""
+                )
+            except mailer.MailError as exc:
+                sys.stderr.write(
+                    "[reset] could not email %s: %s\n" % (email, exc)
+                )
+        elif CONFIG.public_host:
+            # Never print a live reset token into a production log.
+            sys.stderr.write(
+                "[reset] SMTP is not configured; no reset email sent for %s\n" % email
+            )
+        else:
+            # Local development has no mailbox to check, so the link goes to the
+            # console (the same place the startup banner appears).
+            sys.stderr.write(
+                "[reset] SMTP is not configured; reset link for %s: %s\n"
+                % (email, reset_url)
+            )
+            sys.stderr.flush()
+
+        self._json(200, {"ok": True, "message": FORGOT_PASSWORD_MESSAGE})
+
+    def _api_reset_password(self, body):
+        """Consume an emailed token and replace the account's password."""
+        token = str(body.get("token") or "").strip()
+        password = body.get("password") or ""
+        invalid = ApiError(
+            400,
+            "That reset link is invalid or has expired. Request a new one.",
+            code="invalid_reset_token",
+        )
+        # Cheap check first: hashing a password costs ~200k PBKDF2 rounds, and a
+        # stream of made-up tokens must not be able to spend that per request.
+        if not token or len(token) > 512:
+            raise invalid
+        if not STORE.get_password_reset(security.hash_reset_token(token)):
+            raise invalid
+        if not is_valid_password(password):
+            raise ApiError(400, "Password must be at least 8 characters.")
+
+        user_id = STORE.reset_password_with_token(
+            security.hash_reset_token(token), security.hash_password(password)
+        )
+        if not user_id:
+            # Another request consumed the same link between the two checks.
+            raise invalid
+        # The reset leaves existing session tokens alone (they are stateless
+        # JWTs): the owner of the mailbox is the account owner, and forcing a
+        # re-login everywhere would be a separate "sign out all devices" feature.
+        sys.stderr.write("[reset] password changed for account %s\n" % user_id)
+        self._json(
+            200,
+            {
+                "ok": True,
+                "message": "Your password has been changed. You can sign in now.",
+            },
+        )
 
     # ---- owner report ------------------------------------------------------
     def _admin_token_from_request(self, query):
@@ -212,15 +437,25 @@ class Handler(BaseHTTPRequestHandler):
             return header
         return (parse_qs(query or "").get("token", [""])[0] or "").strip()
 
+    def _admin_token_matches(self, query):
+        """True when this request carries the owner token.
+
+        Guarding the report is one use; the other is deciding whether
+        /api/health may describe the host (see ``Config.describe``).
+        """
+        if not CONFIG.admin_overview_enabled:
+            return False
+        supplied = self._admin_token_from_request(query)
+        # compare_digest keeps the comparison independent of how many leading
+        # characters of the token were right.
+        return bool(supplied) and hmac.compare_digest(supplied, CONFIG.admin_token)
+
     def _require_admin(self, query):
         if not CONFIG.admin_overview_enabled:
             # 404, not 403: an endpoint that is switched off should not advertise
             # that it exists, or that some token would open it.
             raise ApiError(404, "Unknown endpoint.")
-        supplied = self._admin_token_from_request(query)
-        # compare_digest keeps the comparison independent of how many leading
-        # characters of the token were right.
-        if not supplied or not hmac.compare_digest(supplied, CONFIG.admin_token):
+        if not self._admin_token_matches(query):
             # Refusals are logged: a run of them is the only signal that someone
             # is trying tokens against the customer list.
             sys.stderr.write("[admin] overview denied for %s\n" % self.address_string())
@@ -713,12 +948,18 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             if path == "/api/health":
+                # The payload names no host, database path or listening address
+                # unless the caller sends the owner token: an anonymous probe
+                # should learn whether the app is up and how it is configured,
+                # not where it keeps its data.
                 self._json(
                     200,
                     {
                         "ok": True,
                         "time": billing.to_iso(billing.utcnow()),
-                        "config": CONFIG.describe(),
+                        "config": CONFIG.describe(
+                            include_internals=self._admin_token_matches(parsed.query)
+                        ),
                     },
                 )
             elif path == "/api/exam-types":
@@ -788,6 +1029,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._api_signup(self._parse_json(raw))
             elif path == "/api/auth/login":
                 self._api_login(self._parse_json(raw))
+            elif path == "/api/auth/forgot-password":
+                self._api_forgot_password(self._parse_json(raw))
+            elif path == "/api/auth/reset-password":
+                self._api_reset_password(self._parse_json(raw))
             elif path == "/api/billing/checkout":
                 self._api_checkout(self._require_user(), self._parse_json(raw))
             elif path == "/api/billing/portal":
@@ -845,6 +1090,8 @@ class Handler(BaseHTTPRequestHandler):
             url_path = "/index.html"                         # the roster dashboard
         elif url_path in ("/login", "/login/", "/signup", "/signup/"):
             url_path = "/landing.html"                       # landing page opens the modal
+        elif url_path in ("/reset-password", "/reset-password/"):
+            url_path = "/landing.html"                       # landing page opens the reset pane
         elif url_path in ("/terms", "/terms/"):
             url_path = "/terms.html"                         # Terms & Conditions of Service
         elif url_path in ("/privacy", "/privacy/"):
@@ -874,6 +1121,20 @@ class Handler(BaseHTTPRequestHandler):
         if any(part.startswith(".") for part in parts):
             return None
         if parts[0] == "server":
+            return None
+        # Anything whose name ends in ".env" carries JWT_SECRET, ADMIN_TOKEN and
+        # the gateway keys. The dotfile rule above covers ".env" itself; this
+        # covers the names that do not start with a dot, such as the
+        # deploy/invigismart-api.env that deploy/make-api-env.py writes and that
+        # gets uploaded next to the app. It was downloadable until this check:
+        # the static handler only ever blocked *.py, *.md and *.db.
+        if any(part == ".env" or part.endswith(".env") for part in parts):
+            return None
+        # Server-side directories, both inside the app root and neither part of
+        # the website: deploy/ holds the archive, the env generator and the
+        # upload scripts; data/ holds the database, its backups and the
+        # documents, all of which are served through token-guarded endpoints.
+        if parts[0] in ("deploy", "data"):
             return None
         if candidate.lower().endswith((".db", ".py", ".md")):
             return None
@@ -990,6 +1251,15 @@ def startup_banner(host, port):
             "configured" if CONFIG.stripe_webhook_secret else "NOT configured"
         ),
         "  mock billing    : %s" % ("enabled" if CONFIG.allow_mock_billing else "disabled"),
+        "  email           : %s" % (
+            "SMTP %s:%d%s" % (
+                CONFIG.smtp_host,
+                CONFIG.smtp_port,
+                "" if (CONFIG.smtp_ssl or CONFIG.smtp_starttls) else " (no TLS)",
+            )
+            if CONFIG.smtp_configured
+            else "NOT configured (forgot-password links are printed locally)"
+        ),
         "  owner report    : %s" % (
             "GET /api/admin/overview (ADMIN_TOKEN set)"
             if CONFIG.admin_overview_enabled
@@ -1006,6 +1276,8 @@ def startup_banner(host, port):
     if CONFIG.jwt_secret_is_ephemeral:
         lines.append("  WARNING         : JWT_SECRET unset - sessions reset on every restart.")
     for warning in CONFIG.billing_warnings:
+        lines.append("  WARNING         : %s" % warning)
+    for warning in CONFIG.email_warnings:
         lines.append("  WARNING         : %s" % warning)
     return lines
 

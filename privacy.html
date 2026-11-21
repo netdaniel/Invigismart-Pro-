@@ -5,16 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy Policy &mdash; Invigismart Pro</title>
   <meta name="description" content="Privacy Policy (POPIA &amp; GDPR compliant) for Invigismart Pro, the exam invigilation rostering platform operated by Prinsloo Consulting.">
-  <!-- Same pinned libraries and palette as the landing page and dashboard,
-       so the legal pages look like part of the same product -->
-  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
-  <script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.min.js"
-          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"
-          crossorigin="anonymous"></script>
+  <!-- Pinned libraries, served from this origin. These pages keep the session
+       token in localStorage, so a script fetched from a third party would run
+       with access to it; self-hosting also means the site still works when that
+       CDN is down or blocked. The version is in the filename, and the SRI hash
+       pins the bytes that ship: a corrupted upload is refused, not executed. -->
+  <script src="/assets/tailwind-3.4.16.js"
+          integrity="sha384-mS5Uq7sE90lgbBDN8xgf34ibEgbZo4gB3tfLY40ZRle+M188BQw8onzNHg6GUZaA"></script>
+  <script src="/assets/lucide-0.451.0.min.js"
+          integrity="sha384-P5xo9rojtPMJix8s8OOB7+Z9kJVscVTUnqtkxXDbSOu7ojhVxczwUUHeeKtZwUjd"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
   <script>
     /* Invigismart Pro brand palette. Kept identical to landing.html and
        index.html so the two products share one visual identity. */
